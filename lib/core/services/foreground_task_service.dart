@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'alert_notifier.dart';
 
 // Top-level entry point required by flutter_foreground_task
 @pragma('vm:entry-point')
@@ -50,12 +51,14 @@ class ForegroundTaskService {
     FlutterForegroundTask.initCommunicationPort();
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'focus_session_service',
-        channelName: 'FocusKnight Session Timer',
-        channelDescription: 'Keeps focus session timer alive and updates sticky notification.',
-        channelImportance: NotificationChannelImportance.HIGH,
-        priority: NotificationPriority.HIGH,
-        onlyAlertOnce: false,
+        // Silent sticky timer. A new id is needed: Android never lowers an existing channel's
+        // importance. Alerts (session start/end, violations, rank up) go through AlertNotifier.
+        channelId: 'focus_session_silent',
+        channelName: 'FocusKnight – đồng hồ phiên',
+        channelDescription: 'Thông báo thường trực giữ đồng hồ phiên chạy nền (không âm thanh).',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        onlyAlertOnce: true,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
         showNotification: false,
@@ -95,7 +98,7 @@ class ForegroundTaskService {
         await FlutterForegroundTask.startService(
           serviceTypes: [ForegroundServiceTypes.specialUse],
           notificationTitle: 'FocusKnight: $taskName',
-          notificationText: 'Focusing on $taskName: $remainingTime left',
+          notificationText: remainingTime,
           callback: foregroundTaskCallback,
         );
       }
@@ -110,7 +113,7 @@ class ForegroundTaskService {
       if (await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.updateService(
           notificationTitle: 'FocusKnight: $taskName',
-          notificationText: 'Focusing on $taskName: $remainingTime left',
+          notificationText: remainingTime,
         );
       }
     } catch (_) {}
@@ -127,61 +130,25 @@ class ForegroundTaskService {
   static DateTime? _lastNotificationTime;
   static String? _lastNotifiedPackage;
 
-  /// Shows standard Android heads-up notification popup when a social media limit is exceeded
+  /// Alerts when a social media app is over its daily limit (outside a battle).
   static Future<void> notifyAppLimitExceeded({
     required String appName,
     required String packageName,
     required int limitMinutes,
   }) async {
-    try {
-      final now = DateTime.now();
-      // Throttle notifications: do not alert more than once every 2 minutes for the same app
-      if (_lastNotifiedPackage == packageName &&
-          _lastNotificationTime != null &&
-          now.difference(_lastNotificationTime!) < const Duration(minutes: 2)) {
-        return;
-      }
-
-      _lastNotificationTime = now;
-      _lastNotifiedPackage = packageName;
-
-      await requestPermissions();
-      if (await FlutterForegroundTask.isRunningService) {
-        await FlutterForegroundTask.updateService(
-          notificationTitle: '⚠️ Cảnh báo hạn mức: $appName',
-          notificationText: 'Bạn đã dùng $appName vượt quá $limitMinutes phút hôm nay! Hãy nghỉ ngơi.',
-        );
-      } else {
-        await FlutterForegroundTask.startService(
-          serviceTypes: [ForegroundServiceTypes.specialUse],
-          notificationTitle: '⚠️ Cảnh báo hạn mức: $appName',
-          notificationText: 'Bạn đã dùng $appName vượt quá $limitMinutes phút hôm nay! Hãy nghỉ ngơi.',
-          callback: foregroundTaskCallback,
-        );
-      }
-    } catch (_) {}
-  }
-
-  /// Shows standard Android heads-up notification popup when a session event occurs (inter-session or completion)
-  static Future<void> notifySessionEvent({
-    required String title,
-    required String message,
-  }) async {
-    try {
-      await requestPermissions();
-      if (await FlutterForegroundTask.isRunningService) {
-        await FlutterForegroundTask.updateService(
-          notificationTitle: title,
-          notificationText: message,
-        );
-      } else {
-        await FlutterForegroundTask.startService(
-          serviceTypes: [ForegroundServiceTypes.specialUse],
-          notificationTitle: title,
-          notificationText: message,
-          callback: foregroundTaskCallback,
-        );
-      }
-    } catch (_) {}
+    final now = DateTime.now();
+    // Throttle notifications: do not alert more than once every 2 minutes for the same app
+    if (_lastNotifiedPackage == packageName &&
+        _lastNotificationTime != null &&
+        now.difference(_lastNotificationTime!) < const Duration(minutes: 2)) {
+      return;
+    }
+    _lastNotificationTime = now;
+    _lastNotifiedPackage = packageName;
+    await AlertNotifier.show(
+      '⚠️ Cảnh báo hạn mức: $appName',
+      'Bạn đã dùng $appName vượt quá $limitMinutes phút hôm nay! Hãy nghỉ ngơi.',
+      id: AlertNotifier.appLimit,
+    );
   }
 }

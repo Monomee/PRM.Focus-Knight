@@ -6,18 +6,19 @@ void main() {
   DateTime at(int s) => t0.add(Duration(seconds: s));
   const pkg = 'com.google.android.youtube';
 
-  late int penalties, taxes, lefts;
+  late int penalties, taxes, lefts, warnings;
   late int grace;
   late DistractionGuard guard;
 
   setUp(() {
-    penalties = taxes = lefts = 0;
+    penalties = taxes = lefts = warnings = 0;
     grace = 10;
     guard = DistractionGuard(
       graceSeconds: () => grace,
       onPenalty: (_) => penalties++,
       onTax: () => taxes++,
       onLeftBlacklisted: () => lefts++,
+      onGraceStart: (_) => warnings++,
     );
   });
 
@@ -76,5 +77,16 @@ void main() {
     guard.reset();
     guard.tick(pkg, at(10));
     expect(penalties, 0);
+  });
+
+  test('warns once when a visit starts, again on the next visit', () {
+    guard.tick(pkg, at(0));
+    guard.tick(pkg, at(2));
+    guard.tick(pkg, at(10));
+    guard.tick(pkg, at(12));
+    expect(warnings, 1);
+    guard.tick(null, at(14));
+    guard.tick(pkg, at(16));
+    expect(warnings, 2);
   });
 }

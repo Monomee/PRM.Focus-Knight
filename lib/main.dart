@@ -10,6 +10,8 @@ import 'features/focus_session/focus_session_controller.dart';
 import 'features/focus_session/settlement.dart';
 import 'core/game/player_state.dart';
 import 'core/game/village.dart';
+import 'core/game/economy.dart';
+import 'core/services/alert_notifier.dart';
 import 'core/services/distraction_guard.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
 import 'features/telemetry/screen_time_tracker.dart';
@@ -88,6 +90,11 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       _pushOverlayState(null);
     },
     onLeftBlacklisted: _overlayService.closeBlockerOverlay,
+    onGraceStart: (pkg) => AlertNotifier.show(
+      '⚠️ Đang mở ${BlacklistConstants.appNames[pkg] ?? pkg}',
+      'Quay lại FocusKnight trong ${graceSecondsFor(_player.levelOf(Building.tower))} giây để không mất $kPenaltyHp HP.',
+      id: AlertNotifier.violation,
+    ),
   );
   String? _blockedPkg;
   bool _interruptionCounted = false;

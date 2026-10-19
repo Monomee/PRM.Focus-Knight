@@ -9,12 +9,16 @@ class DistractionGuard {
     required this.onPenalty,
     required this.onTax,
     required this.onLeftBlacklisted,
+    this.onGraceStart,
   });
 
   final int Function() graceSeconds;
   final void Function(String pkg) onPenalty;
   final void Function() onTax;
   final void Function() onLeftBlacklisted;
+
+  /// A blacklisted app was just opened: warn before the penalty lands.
+  final void Function(String pkg)? onGraceStart;
 
   DateTime? _graceStart;
   DateTime? _lastTax;
@@ -34,7 +38,10 @@ class DistractionGuard {
       }
       return;
     }
-    _graceStart ??= now;
+    if (_graceStart == null) {
+      _graceStart = now;
+      onGraceStart?.call(blacklistedPkg);
+    }
     if (now.difference(_graceStart!).inSeconds >= graceSeconds()) {
       _graceStart = null;
       _lastTax = now;
