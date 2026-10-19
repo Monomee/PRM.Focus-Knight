@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_dart/core/game/player_state.dart';
 import 'package:test_dart/core/game/progression.dart';
+import 'package:test_dart/core/game/village.dart';
 import 'package:test_dart/features/village/village_screen.dart';
 
 void main() {
@@ -49,5 +50,17 @@ void main() {
   testWidgets('character houses show their lock rank', (tester) async {
     await pumpVillage(tester, prefs: {}, rank: Rank.gold);
     expect(find.text('🔒 Diamond'), findsOneWidget);
+  });
+
+  testWidgets('double tap on build spends once', (tester) async {
+    await pumpVillage(tester, prefs: {'fk_gold': 1000, 'fk_logs': 1000});
+    await openSlot(tester, 'tower');
+    final build = find.widgetWithText(FilledButton, 'Xây');
+    await tester.tap(build);
+    await tester.tap(build, warnIfMissed: false);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(player.levelOf(Building.tower), 1);
+    expect(player.coins, 800);
   });
 }

@@ -56,6 +56,7 @@ void main() {
   test('defeat forfeits everything', () async {
     c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
     c.debugCompleteFocus();
+    c.finishRestBreak(); // penalties only apply while focusing
     for (var i = 0; i < 4; i++) {
       c.applyBlacklistPenalty();
     }
@@ -75,6 +76,7 @@ void main() {
   test('tax never below zero', () {
     c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
     c.debugCompleteFocus();
+    c.finishRestBreak();
     c.applyDistractionTax();
     expect(c.pendingCoins, 15);
     c.applyDistractionTax();
@@ -126,5 +128,23 @@ void main() {
   test('house HP ratio follows remaining time', () {
     c.startFocusSession(task: 'T', durationSeconds: 1500);
     expect(c.houseHpRatio, 1.0);
+  });
+
+  test('penalty and tax ignored during rest', () {
+    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+    c.debugCompleteFocus();
+    expect(c.isResting, isTrue);
+    c.applyBlacklistPenalty();
+    c.applyDistractionTax();
+    expect(c.heroHp, 100);
+    expect(c.pendingCoins, 30);
+  });
+
+  test('starting again while in battle keeps the escrow', () {
+    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+    c.debugCompleteFocus();
+    c.startFocusSession(task: 'Other', durationSeconds: 60);
+    expect(c.pendingCoins, 30);
+    expect(c.taskName, 'T');
   });
 }

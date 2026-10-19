@@ -126,6 +126,7 @@ class FocusSessionController extends ChangeNotifier {
     int longBreakEvery = 0,
     int longRestSeconds = 900,
   }) {
+    if (inBattle) return; // never wipe a running battle's escrow
     _countdownTimer?.cancel();
     _taskName = task.trim().isEmpty ? 'Deep Work' : task.trim();
     _totalSessions = totalSessions > 0 ? totalSessions : 1;
@@ -327,9 +328,10 @@ class FocusSessionController extends ChangeNotifier {
     );
   }
 
-  /// Hero takes [kPenaltyHp] damage for using a blacklisted app; 0 HP loses the battle.
+  /// Hero takes [kPenaltyHp] damage for using a blacklisted app while focusing (incl. paused);
+  /// rest breaks are free. 0 HP loses the battle.
   void applyBlacklistPenalty() {
-    if (!inBattle) return;
+    if (!isFocusing) return;
     _heroHp = math.max(0, _heroHp - kPenaltyHp);
     if (_heroHp == 0) {
       _defeat();
@@ -340,7 +342,7 @@ class FocusSessionController extends ChangeNotifier {
 
   /// Takes [kDistractionTax] coins from the battle escrow (never below 0).
   void applyDistractionTax() {
-    if (!inBattle) return;
+    if (!isFocusing) return;
     _pendingCoins = math.max(0, _pendingCoins - kDistractionTax);
     notifyListeners();
   }

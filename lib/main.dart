@@ -89,6 +89,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     onLeftBlacklisted: _overlayService.closeBlockerOverlay,
   );
   String? _blockedPkg;
+  bool _interruptionCounted = false;
 
   void _pushOverlayState(String? pkg) {
     _blockedPkg = pkg ?? _blockedPkg;
@@ -133,21 +134,36 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
       // FocusKnight moved to background (hidden and paused both fire; count once)
-      final justLeft = _overlayService.isAppInForeground;
-      _overlayService.isAppInForeground = false;
-      if (justLeft && _sessionController.isFocusing) {
-        _sessionController.recordInterruptionEvent();
+      if (_overlayService.isAppInForeground) {
+        _screenTimeTracker.markLeftApp();
+        _interruptionCounted = false;
       }
+      _overlayService.isAppInForeground = false;
 
       // Periodic monitor for blacklisted apps while in background
       _distractionCheckTimer?.cancel();
       _distractionCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
         if (_overlayService.isAppInForeground) return;
 
-        final blacklistedPkg = await _screenTimeTracker.getActiveBlacklistedPackage();
         if (_sessionController.inBattle) {
-          _guard.tick(blacklistedPkg, DateTime.now());
-        } else if (blacklistedPkg != null && _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
+          final fg = await _screenTimeTracker.foregroundSinceLeft();
+          if (_overlayService.isAppInForeground) return; // resumed while we were querying
+          // Locking the screen opens no app, so it is not a distraction.
+          if (fg != null && !_interruptionCounted && _sessionController.isFocusing) {
+            _interruptionCounted = true;
+            _sessionController.recordInterruptionEvent();
+          }
+          if (_sessionController.isFocusing) {
+            _guard.tick(BlacklistConstants.defaultBlacklist.contains(fg) ? fg : null, DateTime.now());
+          } else {
+            // Rest breaks are free: drop any pending grace and blocker.
+            _guard.reset();
+            if (_overlayService.isOverlayOpen) _overlayService.closeBlockerOverlay();
+          }
+          return;
+        }
+        final blacklistedPkg = await _screenTimeTracker.getActiveBlacklistedPackage();
+        if (blacklistedPkg != null && _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
           // Standard system notification popup (NOT full-screen blocker overlay!)
           ForegroundTaskService.notifyAppLimitExceeded(
             appName: BlacklistConstants.appNames[blacklistedPkg] ?? blacklistedPkg,
