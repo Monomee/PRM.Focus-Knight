@@ -110,8 +110,8 @@ class _FocusViewState extends State<FocusView> with TickerProviderStateMixin {
       onPointerDown: (_) => _wakeControls(),
       child: LayoutBuilder(builder: (context, box) {
         final w = box.maxWidth, h = box.maxHeight;
-        final heroSize = w * 0.36;
-        final enemySize = w * 0.3;
+        final heroSize = w * 0.5;
+        final enemySize = w * 0.42;
         final groundTop = h * 0.46;
         return Stack(
           children: [
@@ -126,7 +126,7 @@ class _FocusViewState extends State<FocusView> with TickerProviderStateMixin {
                 top: groundTop - w * 0.14,
                 child: Column(children: [
                   _Bar(value: c.houseHpRatio, color: const Color(0xFFF87171), width: w * 0.24),
-                  Image.asset(_goblinHouse, width: w * 0.28, filterQuality: FilterQuality.none),
+                  Image.asset(_goblinHouse, width: w * 0.34, filterQuality: FilterQuality.none),
                 ]),
               )
             else
@@ -139,8 +139,8 @@ class _FocusViewState extends State<FocusView> with TickerProviderStateMixin {
             if (_enemyVisible && !widget.victoryRun && !c.isPaused)
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 1600),
-                left: _enemyArrived ? w * 0.04 + heroSize * 0.7 : w * 0.62,
-                top: groundTop + heroSize * 0.12,
+                left: _enemyArrived ? w * 0.04 + heroSize * 0.45 : w * 0.58,
+                top: groundTop + heroSize * 0.08,
                 child: SpriteAnim(
                   sheet: _enemyArrived ? enemySprites[_enemyIndex].attack : enemySprites[_enemyIndex].run,
                   size: enemySize,
@@ -153,7 +153,7 @@ class _FocusViewState extends State<FocusView> with TickerProviderStateMixin {
               left: widget.victoryRun ? w : w * 0.04,
               top: groundTop,
               child: Column(children: [
-                _Bar(value: c.heroHp / kHeroMaxHp, color: const Color(0xFF4ADE80), width: heroSize * 0.5),
+                _Bar(value: c.heroHp / kHeroMaxHp, color: const Color(0xFF4ADE80), width: heroSize * 0.35),
                 AnimatedBuilder(
                   animation: _hurt,
                   builder: (context, child) {
@@ -305,7 +305,8 @@ class _Bar extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 2),
         decoration: BoxDecoration(color: const Color(0xAA000000), border: Border.all(color: Colors.black)),
         alignment: Alignment.centerLeft,
-        child: FractionallySizedBox(widthFactor: value.clamp(0.0, 1.0), child: ColoredBox(color: color)),
+        child: FractionallySizedBox(
+            widthFactor: value.clamp(0.0, 1.0), heightFactor: 1, child: ColoredBox(color: color)),
       );
 }
 

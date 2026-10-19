@@ -84,4 +84,15 @@ void main() {
     expect(find.textContaining('Thất bại'), findsOneWidget);
     await finish(tester);
   });
+
+  testWidgets('HP bars are actually filled', (tester) async {
+    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+    await pumpBattle(tester);
+    final fills = find.descendant(of: find.byType(FractionallySizedBox), matching: find.byType(ColoredBox));
+    expect(fills, findsWidgets);
+    for (final e in fills.evaluate()) {
+      expect(tester.getSize(find.byWidget(e.widget)).height, greaterThan(0));
+    }
+    await finish(tester);
+  });
 }

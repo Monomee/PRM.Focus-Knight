@@ -147,4 +147,11 @@ void main() {
     expect(c.pendingCoins, 30);
     expect(c.taskName, 'T');
   });
+
+  test('rest lasts its full duration with real timers', () async {
+    c.startFocusSession(task: 'T', durationSeconds: 1, totalSessions: 2, restDurationSeconds: 5);
+    await Future.delayed(const Duration(milliseconds: 3500));
+    expect(c.isResting, isTrue);
+    expect(c.remainingSeconds, greaterThan(1));
+  });
 }
