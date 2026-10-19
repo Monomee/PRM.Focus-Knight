@@ -4,7 +4,7 @@ import '../../core/constants/blacklist_constants.dart';
 import '../../core/services/overlay_service.dart';
 import '../focus_session/focus_session_controller.dart';
 import '../../core/game/player_state.dart';
-import '../battle/battle_screen.dart';
+import '../battle/battle_launcher.dart';
 import '../telemetry/screen_time_tracker.dart';
 import 'services/analytics_service.dart';
 import 'services/focus_history_service.dart';
@@ -87,19 +87,8 @@ class _FocusKnightDashboardScreenState extends State<FocusKnightDashboardScreen>
   }
 
   Future<void> _navigateToGameScreen() async {
-    // Temporary until the setup sheet lands: default 25-minute battle.
-    if (widget.sessionController.isSetup) {
-      widget.sessionController.startFocusSession(task: 'Deep Work', durationSeconds: 25 * 60);
-    }
     // Edge Case B: Await navigation and reload data on pop to prevent stale state
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => BattleScreen(
-          controller: widget.sessionController,
-          player: widget.player,
-        ),
-      ),
-    );
+    await openBattle(context, controller: widget.sessionController, player: widget.player);
 
     _loadDashboardData();
   }
