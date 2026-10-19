@@ -37,6 +37,14 @@ void main() {
       expect(isBadgeUnlocked(GameCharacter.monk, Rank.starter, Rank.ruby), isTrue);
     });
 
+    test('rankUp reports the new rank only when a threshold is crossed', () {
+      const h = 3600;
+      expect(rankUp(9 * h, 2 * h), Rank.gold);
+      expect(rankUp(10 * h, 2 * h), isNull);
+      expect(rankUp(0, 1500), isNull);
+      expect(rankUp(29 * h, 200 * h), Rank.amethyst);
+    });
+
     test('badgeAsset path', () {
       expect(badgeAsset(GameCharacter.archer, Rank.diamond), 'ui/ranks/archer/archer_diamond.png');
     });

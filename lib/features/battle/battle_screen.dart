@@ -7,7 +7,7 @@ import 'focus_view.dart';
 import 'mindful_interruption_dialog.dart';
 import 'result_view.dart';
 
-/// Full-screen game UI for a battle: Focus → (victory run) → Camp → … → Result.
+/// Full-screen game UI for a battle: Focus → (house destroyed) → Camp → … → Result.
 class BattleScreen extends StatefulWidget {
   const BattleScreen({super.key, required this.controller, required this.player, this.onOpenVillage});
 
@@ -22,6 +22,7 @@ class BattleScreen extends StatefulWidget {
 class _BattleScreenState extends State<BattleScreen> {
   late SessionPhase _lastPhase = widget.controller.phase;
   bool _victoryRun = false;
+  bool _mindfulOpen = false;
 
   @override
   void initState() {
@@ -40,6 +41,11 @@ class _BattleScreenState extends State<BattleScreen> {
     final sessionWon = _lastPhase == SessionPhase.focus &&
         (c.isResting || (c.isSetup && (c.lastResult?.won ?? false)));
     _lastPhase = c.phase;
+    // The session ended (time up or defeat) while the mindful dialog was open: close it.
+    if (_mindfulOpen && !c.isFocusing && mounted) {
+      _mindfulOpen = false;
+      Navigator.of(context).pop();
+    }
     if (sessionWon) {
       _victoryRun = true;
       Future.delayed(const Duration(milliseconds: 800), () {
@@ -50,17 +56,19 @@ class _BattleScreenState extends State<BattleScreen> {
   }
 
   void _showMindfulDialog() {
+    _mindfulOpen = true;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => MindfulInterruptionDialog(
         onConfirmAbandon: (reason) {
           Navigator.of(ctx).pop();
-          widget.controller.forceAbandonSession(reason: reason);
+          // Only a focus session can be abandoned from here; never forfeit a rest break.
+          if (widget.controller.isFocusing) widget.controller.forceAbandonSession(reason: reason);
         },
         onResumeFocus: () => Navigator.of(ctx).pop(),
       ),
-    );
+    ).whenComplete(() => _mindfulOpen = false);
   }
 
   @override

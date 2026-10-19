@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 /// 15-second mindful pause before abandoning a focus session.
@@ -13,7 +14,8 @@ class MindfulInterruptionDialog extends StatefulWidget {
   });
 
   @override
-  State<MindfulInterruptionDialog> createState() => _MindfulInterruptionDialogState();
+  State<MindfulInterruptionDialog> createState() =>
+      _MindfulInterruptionDialogState();
 }
 
 class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
@@ -70,7 +72,9 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
                 shape: BoxShape.circle,
                 color: const Color(0xFF3B82F6).withValues(alpha: 0.2),
                 border: Border.all(
-                  color: isLocked ? const Color(0xFF60A5FA) : const Color(0xFF10B981),
+                  color: isLocked
+                      ? const Color(0xFF60A5FA)
+                      : const Color(0xFF10B981),
                   width: 2.5,
                 ),
               ),
@@ -81,7 +85,9 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
                     fontSize: 26,
                     fontWeight: FontWeight.w900,
                     fontFamily: 'monospace',
-                    color: isLocked ? const Color(0xFF60A5FA) : const Color(0xFF10B981),
+                    color: isLocked
+                        ? const Color(0xFF60A5FA)
+                        : const Color(0xFF10B981),
                   ),
                 ),
               ),
@@ -90,7 +96,9 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
             const SizedBox(height: 12),
 
             Text(
-              isLocked ? 'HÍT THỞ SÂU ĐỂ TĨNH TÂM' : 'BẠN ĐÃ TĨNH TÂM LẠI CHƯA?',
+              isLocked
+                  ? 'HÍT THỞ SÂU ĐỂ TĨNH TÂM'
+                  : 'BẠN ĐÃ TĨNH TÂM LẠI CHƯA?',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w900,
@@ -101,8 +109,8 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
             const SizedBox(height: 4),
             Text(
               isLocked
-                ? 'Hít vào 4 giây... Thở ra 4 giây. Cơn bồn chồn chỉ kéo dài chốc lát.'
-                : 'Nếu thật sự cần dừng, hãy chọn lý do bên dưới để hoàn tất.',
+                  ? 'Hít vào 4 giây... Thở ra 4 giây. Cơn bồn chồn chỉ kéo dài chốc lát.'
+                  : 'Nếu thật sự cần dừng, hãy chọn lý do bên dưới để hoàn tất.',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
             ),
@@ -114,7 +122,11 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
               alignment: Alignment.centerLeft,
               child: Text(
                 'Lý do muốn bỏ cuộc:',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFFCBD5E1)),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFFCBD5E1),
+                ),
               ),
             ),
             const SizedBox(height: 6),
@@ -131,30 +143,45 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: isSelected
                           ? const Color(0xFFD97706).withValues(alpha: 0.2)
                           : const Color(0xFF121520),
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
-                        color: isSelected ? const Color(0xFFFFB300) : const Color(0xFF334155),
+                        color: isSelected
+                            ? const Color(0xFFFFB300)
+                            : const Color(0xFF334155),
                       ),
                     ),
                     child: Row(
                       children: [
                         Icon(
-                          isSelected ? Icons.radio_button_checked : Icons.radio_button_off,
+                          isSelected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
                           size: 14,
-                          color: isSelected ? const Color(0xFFFFB300) : const Color(0xFF64748B),
+                          color: isSelected
+                              ? const Color(0xFFFFB300)
+                              : const Color(0xFF64748B),
                         ),
                         const SizedBox(width: 8),
-                        Text(
-                          r,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        Expanded(
+                          child: Text(
+                            r,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isSelected
+                                  ? Colors.white
+                                  : const Color(0xFF94A3B8),
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                            ),
                           ),
                         ),
                       ],
@@ -176,29 +203,45 @@ class _MindfulInterruptionDialogState extends State<MindfulInterruptionDialog> {
                       backgroundColor: const Color(0xFF10B981),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    child: const Text('Tiếp tục tập trung', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Tiếp tục tập trung',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: isLocked ? null : () => widget.onConfirmAbandon(_selectedReason),
+                    onPressed: isLocked
+                        ? null
+                        : () => widget.onConfirmAbandon(_selectedReason),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFFEF4444),
                       side: BorderSide(
-                        color: isLocked ? const Color(0xFF475569) : const Color(0xFFEF4444),
+                        color: isLocked
+                            ? const Color(0xFF475569)
+                            : const Color(0xFFEF4444),
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                     child: Text(
                       isLocked ? 'Chờ ${_countdown}s' : 'Xác nhận thoát',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: isLocked ? const Color(0xFF64748B) : const Color(0xFFEF4444),
+                        color: isLocked
+                            ? const Color(0xFF64748B)
+                            : const Color(0xFFEF4444),
                       ),
                     ),
                   ),

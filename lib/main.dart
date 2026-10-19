@@ -7,8 +7,11 @@ import 'core/services/overlay_service.dart';
 import 'features/shell/app_shell.dart';
 import 'features/dashboard/services/focus_history_service.dart';
 import 'features/focus_session/focus_session_controller.dart';
+import 'features/focus_session/settlement.dart';
 import 'core/game/player_state.dart';
 import 'core/game/village.dart';
+import 'core/game/economy.dart';
+import 'core/services/alert_notifier.dart';
 import 'core/services/distraction_guard.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
 import 'features/telemetry/screen_time_tracker.dart';
@@ -87,6 +90,11 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       _pushOverlayState(null);
     },
     onLeftBlacklisted: _overlayService.closeBlockerOverlay,
+    onGraceStart: (pkg) => AlertNotifier.show(
+      '⚠️ Đang mở ${BlacklistConstants.appNames[pkg] ?? pkg}',
+      'Quay lại FocusKnight trong ${graceSecondsFor(_player.levelOf(Building.tower))} giây để không mất $kPenaltyHp HP.',
+      id: AlertNotifier.violation,
+    ),
   );
   String? _blockedPkg;
   bool _interruptionCounted = false;
@@ -113,11 +121,18 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     _overlayService = OverlayService();
   }
 
-  /// Weekly granary ticket, then use it to cover a missed day if needed.
   Future<void> _initProgress() async {
     await _player.load();
     final history = FocusHistoryService.instance;
     await history.loadData();
+    // Finish a battle payout that was cut short by the app being killed.
+    await Settlement.resume(_player, history);
+    await _refreshStreakShield();
+  }
+
+  /// Weekly granary ticket, then use it to cover a missed day if needed. Idempotent.
+  Future<void> _refreshStreakShield() async {
+    final history = FocusHistoryService.instance;
     final now = DateTime.now();
     await _player.grantWeeklyTicket(now);
     await history.tryShieldGap(
@@ -162,6 +177,13 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
           }
           return;
         }
+        // Battle just ended (e.g. defeat) with the blocker still up: drop it once the user
+        // leaves the blacklisted app (the overlay also closes itself after a few seconds).
+        if (_overlayService.isOverlayOpen) {
+          _guard.reset();
+          final fg = await _screenTimeTracker.foregroundSinceLeft();
+          if (!BlacklistConstants.defaultBlacklist.contains(fg)) _overlayService.closeBlockerOverlay();
+        }
         final blacklistedPkg = await _screenTimeTracker.getActiveBlacklistedPackage();
         if (blacklistedPkg != null && _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
           // Standard system notification popup (NOT full-screen blocker overlay!)
@@ -181,6 +203,8 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       // Permissions may have been granted in system Settings while we were away.
       _overlayService.checkPermission();
       _screenTimeTracker.checkPermission().then((_) => _screenTimeTracker.refreshUsageStats());
+      // The process can live for days (foreground service): re-check the weekly ticket.
+      _refreshStreakShield();
     }
   }
 

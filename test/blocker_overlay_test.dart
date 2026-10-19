@@ -24,4 +24,28 @@ void main() {
     await tester.pump();
     expect(find.textContaining('Thất bại'), findsOneWidget);
   });
+
+  testWidgets('defeat screen closes itself after 5 seconds', (tester) async {
+    tester.view.physicalSize = const Size(400, 860);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    var closed = 0;
+    final updates = StreamController<dynamic>();
+    addTearDown(updates.close);
+    await tester.pumpWidget(MaterialApp(
+      home: BlockerOverlayWidget(updates: updates.stream, onAutoClose: () async => closed++),
+    ));
+
+    updates.add({'app': 'YouTube', 'hp': 75, 'coins': 0, 'defeated': false});
+    await tester.pump(const Duration(seconds: 10));
+    expect(closed, 0, reason: 'a live battle keeps blocking');
+
+    updates.add({'app': 'YouTube', 'hp': 0, 'coins': 0, 'defeated': true});
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 4));
+    expect(closed, 0);
+    await tester.pump(const Duration(seconds: 1));
+    expect(closed, 1);
+  });
 }

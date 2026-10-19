@@ -28,6 +28,12 @@ enum GameCharacter {
 Rank rankForSeconds(int totalFocusSeconds) =>
     Rank.values.lastWhere((r) => totalFocusSeconds >= r.thresholdHours * 3600);
 
+/// The new rank if adding [addedSeconds] to [beforeSeconds] crosses a threshold, else null.
+Rank? rankUp(int beforeSeconds, int addedSeconds) {
+  final after = rankForSeconds(beforeSeconds + addedSeconds);
+  return after.index > rankForSeconds(beforeSeconds).index ? after : null;
+}
+
 Rank? nextRank(Rank r) => r.index + 1 < Rank.values.length ? Rank.values[r.index + 1] : null;
 
 bool isCharacterUnlocked(GameCharacter c, Rank current) => c.index <= current.index;

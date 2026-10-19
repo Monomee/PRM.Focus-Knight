@@ -12,6 +12,10 @@
         android:label="FocusKnight"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Small icon for the session-timer notification (flutter_foreground_task). -->
+        <meta-data
+            android:name="com.example.test_dart.SESSION_NOTIFICATION_ICON"
+            android:resource="@drawable/ic_stat_focusknight" />
         <activity
             android:name=".MainActivity"
             android:exported="true"

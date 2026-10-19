@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/game/economy.dart';
 import '../../core/game/player_state.dart';
+import '../../core/game/progression.dart';
 import '../../core/game/village.dart';
+import '../../core/services/alert_notifier.dart';
 import '../../core/services/foreground_task_service.dart';
 import '../dashboard/services/focus_history_service.dart';
+import 'settlement.dart';
 
 enum SessionPhase {
   setup, // Choosing task and duration
@@ -154,10 +157,15 @@ class FocusSessionController extends ChangeNotifier {
     notifyListeners();
     ForegroundTaskService.startSessionNotification(
       taskName: '$_taskName$_sessionLabel',
-      remainingTime: formattedTime,
+      remainingTime: _minutesLeft,
     );
+    AlertNotifier.show('⚔ Bắt đầu phiên $_currentSession/$_totalSessions',
+        '$_taskName · ${_totalFocusSeconds ~/ 60} phút');
     _startTicker();
   }
+
+  /// Sticky-notification text; refreshed once a minute so the countdown stays silent.
+  String get _minutesLeft => 'Còn ${(_remainingSeconds / 60).ceil()} phút';
 
   void _startTicker() {
     _countdownTimer?.cancel();
@@ -171,20 +179,18 @@ class FocusSessionController extends ChangeNotifier {
         resumeFromPause();
       } else {
         notifyListeners();
-        ForegroundTaskService.updateSessionNotification(
-          taskName: '$_taskName$_sessionLabel',
-          remainingTime: 'Tạm dừng $formattedPauseTime',
-        );
       }
       return;
     }
     if (_remainingSeconds > 1) {
       _remainingSeconds--;
       notifyListeners();
-      ForegroundTaskService.updateSessionNotification(
-        taskName: isFocusing ? '$_taskName$_sessionLabel' : _restLabel,
-        remainingTime: formattedTime,
-      );
+      if (_remainingSeconds % 60 == 0) {
+        ForegroundTaskService.updateSessionNotification(
+          taskName: isFocusing ? '$_taskName$_sessionLabel' : _restLabel,
+          remainingTime: _minutesLeft,
+        );
+      }
       return;
     }
     _remainingSeconds = 0;
@@ -219,21 +225,15 @@ class FocusSessionController extends ChangeNotifier {
     if (_currentSession < _totalSessions) {
       _isLongRest = _longBreakEvery > 0 && _currentSession % _longBreakEvery == 0;
       final rest = _isLongRest ? _longRestSeconds : _totalRestSeconds;
-      ForegroundTaskService.notifySessionEvent(
-        title: '🎉 Hoàn thành phiên $_currentSession/$_totalSessions!',
-        message: 'Bắt đầu nghỉ ${rest >= 60 ? "${rest ~/ 60} phút" : "$rest giây"}. Phiên tiếp theo sẽ tự động bắt đầu.',
-      );
+      AlertNotifier.show('🎉 Xong phiên $_currentSession/$_totalSessions',
+          '+${reward.coins} coin vào quỹ trận · nghỉ ${rest >= 60 ? "${rest ~/ 60} phút" : "$rest giây"}');
       _phase = SessionPhase.rest;
       _isPaused = false;
       _remainingSeconds = rest;
       notifyListeners();
-      ForegroundTaskService.startSessionNotification(taskName: _restLabel, remainingTime: formattedTime);
+      ForegroundTaskService.startSessionNotification(taskName: _restLabel, remainingTime: _minutesLeft);
       _startTicker();
     } else {
-      ForegroundTaskService.notifySessionEvent(
-        title: '🏆 Hoàn thành trận!',
-        message: 'Chúc mừng! Bạn đã hoàn thành toàn bộ $_totalSessions phiên tập trung.',
-      );
       HapticFeedback.heavyImpact();
       _settleVictory();
     }
@@ -249,19 +249,22 @@ class FocusSessionController extends ChangeNotifier {
       sessions: seconds.length,
     );
     final coins = _pendingCoins, logs = _pendingLogs;
+    final newRank = rankUp(_history.totalFocusSecondsAllTime, pendingFocusSeconds);
     _resetToSetup();
-    () async {
-      for (final s in seconds) {
-        await _history.recordCompletedSession(s);
-      }
-      await player.deposit(coins: coins, logs: logs);
-    }();
+    AlertNotifier.show('🏆 Hoàn thành trận!', '+$coins coin · +$logs log');
+    if (newRank != null) {
+      AlertNotifier.show('🏅 Lên hạng ${newRank.label}!',
+          'Mở khóa ${GameCharacter.values[newRank.index].label} và huy hiệu ${newRank.label}.',
+          id: AlertNotifier.rank);
+    }
+    Settlement.commit(coins: coins, logs: logs, sessionSeconds: seconds, player: player, history: _history);
   }
 
   void _defeat() {
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.heavyImpact();
+    AlertNotifier.show('💀 Thất bại', 'Mất toàn bộ phần thưởng và giờ của trận.');
     _history.recordInterruption();
     _lastResult = BattleResult(
       won: false,
@@ -292,10 +295,6 @@ class FocusSessionController extends ChangeNotifier {
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.vibrate();
     SystemSound.play(SystemSoundType.alert);
-    ForegroundTaskService.notifySessionEvent(
-      title: '⚡ Bắt đầu phiên ${_currentSession + 1}/$_totalSessions!',
-      message: 'Hết giờ nghỉ! Hiệp sĩ tiếp tục chiến đấu tập trung.',
-    );
     finishRestBreak();
   }
 
@@ -315,6 +314,10 @@ class FocusSessionController extends ChangeNotifier {
     _pauseUsed = true;
     _pauseRemainingSeconds = kMaxPauseSeconds;
     notifyListeners();
+    ForegroundTaskService.updateSessionNotification(
+      taskName: '$_taskName$_sessionLabel',
+      remainingTime: 'Tạm dừng (tối đa ${kMaxPauseSeconds ~/ 60} phút)',
+    );
     return true;
   }
 
@@ -324,7 +327,7 @@ class FocusSessionController extends ChangeNotifier {
     notifyListeners();
     ForegroundTaskService.updateSessionNotification(
       taskName: '$_taskName$_sessionLabel',
-      remainingTime: formattedTime,
+      remainingTime: _minutesLeft,
     );
   }
 
