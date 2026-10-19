@@ -52,5 +52,13 @@ void main() {
       expect(service.totalFocusHoursAllTime, 1);
       expect(service.formatSeconds(service.todayFocusSeconds), '1h 0m');
     });
+  
+    test('Session count per day', () async {
+      final today = DateTime.now();
+      expect(await service.getSessionCountForDate(today), 0);
+      await service.recordCompletedSession(1500);
+      await service.recordCompletedSession(1500);
+      expect(await service.getSessionCountForDate(today), 2);
+    });
   });
 }

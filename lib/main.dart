@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'core/constants/blacklist_constants.dart';
 import 'core/services/foreground_task_service.dart';
 import 'core/services/overlay_service.dart';
-import 'features/dashboard/dashboard_screen.dart';
+import 'features/shell/app_shell.dart';
 import 'features/focus_session/focus_session_controller.dart';
 import 'core/game/player_state.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
@@ -43,11 +43,11 @@ class FocusKnightApp extends StatelessWidget {
       title: 'FocusKnight',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark(useMaterial3: true).copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0F111A),
+        scaffoldBackgroundColor: const Color(0xFF0F131C),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFFFFB300),
           secondary: Color(0xFF60A5FA),
-          surface: Color(0xFF1E222D),
+          surface: Color(0xFF151A26),
         ),
       ),
       home: const FocusKnightHomePage(),
@@ -149,11 +149,11 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
 
   @override
   Widget build(BuildContext context) {
-    return FocusKnightDashboardScreen(
+    return AppShell(
+      controller: _sessionController,
       player: _player,
-      sessionController: _sessionController,
-      screenTimeTracker: _screenTimeTracker,
-      overlayService: _overlayService,
+      tracker: _screenTimeTracker,
+      overlay: _overlayService,
     );
   }
 }

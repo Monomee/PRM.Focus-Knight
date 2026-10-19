@@ -107,6 +107,16 @@ class FocusHistoryService extends ChangeNotifier {
     }
   }
 
+  /// Gets completed session count for a specific calendar date
+  Future<int> getSessionCountForDate(DateTime date) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getInt('$_prefixSessionCountDay${formatDate(date)}') ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Retrieves focus seconds for a specific calendar date
   Future<int> getFocusSecondsForDate(DateTime date) async {
     try {
