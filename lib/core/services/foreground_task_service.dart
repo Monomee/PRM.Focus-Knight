@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'alert_notifier.dart';
 
@@ -47,6 +48,12 @@ class FocusTaskHandler extends TaskHandler {
 
 /// Wrapper service managing foreground task lifecycle
 class ForegroundTaskService {
+  // Knight-helmet silhouette; declared as meta-data in AndroidManifest.xml.
+  static const _icon = NotificationIcon(
+    metaDataName: 'com.example.test_dart.SESSION_NOTIFICATION_ICON',
+    backgroundColor: Color(0xFF2F8F91),
+  );
+
   static void init() {
     FlutterForegroundTask.initCommunicationPort();
     FlutterForegroundTask.init(
@@ -99,6 +106,7 @@ class ForegroundTaskService {
           serviceTypes: [ForegroundServiceTypes.specialUse],
           notificationTitle: 'FocusKnight: $taskName',
           notificationText: remainingTime,
+          notificationIcon: _icon,
           callback: foregroundTaskCallback,
         );
       }
