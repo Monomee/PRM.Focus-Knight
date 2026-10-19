@@ -170,6 +170,13 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
           }
           return;
         }
+        // Battle just ended (e.g. defeat) with the blocker still up: drop it once the user
+        // leaves the blacklisted app (the overlay also closes itself after a few seconds).
+        if (_overlayService.isOverlayOpen) {
+          _guard.reset();
+          final fg = await _screenTimeTracker.foregroundSinceLeft();
+          if (!BlacklistConstants.defaultBlacklist.contains(fg)) _overlayService.closeBlockerOverlay();
+        }
         final blacklistedPkg = await _screenTimeTracker.getActiveBlacklistedPackage();
         if (blacklistedPkg != null && _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
           // Standard system notification popup (NOT full-screen blocker overlay!)

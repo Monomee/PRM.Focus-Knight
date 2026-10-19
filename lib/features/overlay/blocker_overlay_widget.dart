@@ -8,10 +8,15 @@ import '../../core/widgets/sprite_anim.dart';
 /// Full-screen blocker shown over a blacklisted app during a battle.
 /// Runs in the overlay isolate; live HP/escrow arrive via [FlutterOverlayWindow.shareData].
 class BlockerOverlayWidget extends StatefulWidget {
-  const BlockerOverlayWidget({super.key, this.updates});
+  const BlockerOverlayWidget({super.key, this.updates, this.onAutoClose});
 
   /// Defaults to [FlutterOverlayWindow.overlayListener]; injectable for tests.
   final Stream<dynamic>? updates;
+
+  /// Defaults to [FlutterOverlayWindow.closeOverlay]; injectable for tests.
+  final Future<void> Function()? onAutoClose;
+
+  static const defeatDisplay = Duration(seconds: 5);
 
   @override
   State<BlockerOverlayWidget> createState() => _BlockerOverlayWidgetState();
@@ -23,6 +28,7 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
   int _hp = kHeroMaxHp;
   int _coins = 0;
   bool _defeated = false;
+  Timer? _closeTimer;
 
   @override
   void initState() {
@@ -35,12 +41,24 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
         _coins = data['coins'] as int? ?? _coins;
         _defeated = data['defeated'] as bool? ?? _defeated;
       });
+      // The battle is over: show the defeat briefly, then stop blocking.
+      if (!_defeated) {
+        // The overlay engine is reused across battles: a live battle cancels any old countdown.
+        _closeTimer?.cancel();
+        _closeTimer = null;
+      } else {
+        _closeTimer ??= Timer(BlockerOverlayWidget.defeatDisplay, () {
+          _closeTimer = null;
+          (widget.onAutoClose ?? FlutterOverlayWindow.closeOverlay)();
+        });
+      }
     });
   }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _closeTimer?.cancel();
     super.dispose();
   }
 
