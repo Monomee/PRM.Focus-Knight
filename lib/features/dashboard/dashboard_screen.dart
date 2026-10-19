@@ -3,8 +3,8 @@ import 'package:flutter/services.dart';
 import '../../core/constants/blacklist_constants.dart';
 import '../../core/services/overlay_service.dart';
 import '../focus_session/focus_session_controller.dart';
-import '../game_view/combat_engine.dart';
-import '../game_view/pomodoro_game_screen.dart';
+import '../../core/game/player_state.dart';
+import '../battle/battle_screen.dart';
 import '../telemetry/screen_time_tracker.dart';
 import 'services/analytics_service.dart';
 import 'services/focus_history_service.dart';
@@ -17,14 +17,14 @@ import 'widgets/golden_hours_card.dart';
 /// Screen-Time Telemetry & Plain text limit, Overlay permission controls,
 /// and primary entrypoint to the Pomodoro Battle session.
 class FocusKnightDashboardScreen extends StatefulWidget {
-  final CombatEngine combatEngine;
+  final PlayerState player;
   final FocusSessionController sessionController;
   final ScreenTimeTracker screenTimeTracker;
   final OverlayService overlayService;
 
   const FocusKnightDashboardScreen({
     super.key,
-    required this.combatEngine,
+    required this.player,
     required this.sessionController,
     required this.screenTimeTracker,
     required this.overlayService,
@@ -87,12 +87,16 @@ class _FocusKnightDashboardScreenState extends State<FocusKnightDashboardScreen>
   }
 
   Future<void> _navigateToGameScreen() async {
+    // Temporary until the setup sheet lands: default 25-minute battle.
+    if (widget.sessionController.isSetup) {
+      widget.sessionController.startFocusSession(task: 'Deep Work', durationSeconds: 25 * 60);
+    }
     // Edge Case B: Await navigation and reload data on pop to prevent stale state
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PomodoroGameScreen(
-          combatEngine: widget.combatEngine,
-          sessionController: widget.sessionController,
+        builder: (_) => BattleScreen(
+          controller: widget.sessionController,
+          player: widget.player,
         ),
       ),
     );
@@ -237,10 +241,10 @@ class _FocusKnightDashboardScreenState extends State<FocusKnightDashboardScreen>
                 const Icon(Icons.monetization_on, color: Color(0xFFFFD54F), size: 14),
                 const SizedBox(width: 4),
                 ListenableBuilder(
-                  listenable: widget.combatEngine,
+                  listenable: widget.player,
                   builder: (context, _) {
                     return Text(
-                      '${widget.combatEngine.gold} GOLD',
+                      '${widget.player.coins} COIN',
                       style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w900,

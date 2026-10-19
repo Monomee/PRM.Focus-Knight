@@ -6,7 +6,7 @@ import 'core/services/foreground_task_service.dart';
 import 'core/services/overlay_service.dart';
 import 'features/dashboard/dashboard_screen.dart';
 import 'features/focus_session/focus_session_controller.dart';
-import 'features/game_view/combat_engine.dart';
+import 'core/game/player_state.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
 import 'features/telemetry/screen_time_tracker.dart';
 
@@ -64,7 +64,7 @@ class FocusKnightHomePage extends StatefulWidget {
 
 class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     with WidgetsBindingObserver {
-  late final CombatEngine _combatEngine;
+  late final PlayerState _player;
   late final FocusSessionController _sessionController;
   late final ScreenTimeTracker _screenTimeTracker;
   late final OverlayService _overlayService;
@@ -76,24 +76,10 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _combatEngine = CombatEngine();
-    _sessionController = FocusSessionController();
+    _player = PlayerState()..load();
+    _sessionController = FocusSessionController(player: _player);
     _screenTimeTracker = ScreenTimeTracker();
     _overlayService = OverlayService();
-
-    _sessionController.addListener(_onSessionStateChanged);
-  }
-
-  void _onSessionStateChanged() {
-    if (_sessionController.isResting) {
-      _combatEngine.pauseCombat();
-    } else if (_sessionController.isFocusing) {
-      widgetResumeCombat();
-    }
-  }
-
-  void widgetResumeCombat() {
-    _combatEngine.resumeCombat();
   }
 
   @override
@@ -154,8 +140,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   void dispose() {
     _distractionCheckTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    _sessionController.removeListener(_onSessionStateChanged);
-    _combatEngine.dispose();
+    _player.dispose();
     _sessionController.dispose();
     _screenTimeTracker.dispose();
     _overlayService.dispose();
@@ -165,7 +150,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   @override
   Widget build(BuildContext context) {
     return FocusKnightDashboardScreen(
-      combatEngine: _combatEngine,
+      player: _player,
       sessionController: _sessionController,
       screenTimeTracker: _screenTimeTracker,
       overlayService: _overlayService,
