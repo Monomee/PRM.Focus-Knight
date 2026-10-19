@@ -7,7 +7,7 @@ import 'focus_view.dart';
 import 'mindful_interruption_dialog.dart';
 import 'result_view.dart';
 
-/// Full-screen game UI for a battle: Focus → (victory run) → Camp → … → Result.
+/// Full-screen game UI for a battle: Focus → (house destroyed) → Camp → … → Result.
 class BattleScreen extends StatefulWidget {
   const BattleScreen({super.key, required this.controller, required this.player, this.onOpenVillage});
 

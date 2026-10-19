@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_dart/core/game/player_state.dart';
+import 'package:test_dart/core/game/sprites.dart';
+import 'package:test_dart/core/widgets/sprite_anim.dart';
 import 'package:test_dart/features/battle/battle_screen.dart';
 import 'package:test_dart/features/dashboard/services/focus_history_service.dart';
 import 'package:test_dart/features/focus_session/focus_session_controller.dart';
@@ -109,6 +111,24 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
     expect(find.byType(Dialog), findsNothing);
     expect(controller.isResting, isTrue);
+    await finish(tester);
+  });
+
+  testWidgets('hero stays put and only fights once the enemy arrives', (tester) async {
+    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+    await pumpBattle(tester);
+    final heroFinder = find.byKey(const Key('hero'));
+    final heroPos = tester.getTopLeft(heroFinder);
+    SpriteSheet heroSheet() => tester.widget<SpriteAnim>(heroFinder).sheet;
+    final hero = characterSprites[player.selectedCharacter]!;
+
+    expect(heroSheet(), hero.idle, reason: 'enemy is still walking');
+    await tester.pump(const Duration(milliseconds: 1000));
+    expect(heroSheet(), hero.idle);
+
+    await tester.pump(const Duration(milliseconds: 2000)); // enemy has arrived
+    expect(heroSheet(), hero.attack);
+    expect(tester.getTopLeft(heroFinder), heroPos);
     await finish(tester);
   });
 }

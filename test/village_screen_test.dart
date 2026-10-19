@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_dart/core/game/player_state.dart';
 import 'package:test_dart/core/game/progression.dart';
 import 'package:test_dart/core/game/village.dart';
+import 'package:test_dart/core/widgets/cover_rect.dart';
 import 'package:test_dart/features/village/village_screen.dart';
 
 void main() {

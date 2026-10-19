@@ -2,18 +2,10 @@ import 'package:flutter/material.dart';
 import '../../core/game/player_state.dart';
 import '../../core/game/progression.dart';
 import '../../core/game/village.dart';
+import '../../core/widgets/cover_rect.dart';
 import '../../core/widgets/sprite_anim.dart';
 import '../battle/camp_view.dart';
 import 'building_sheet.dart';
-
-/// Where an image of [image] size lands inside [box] with [BoxFit.cover], centered.
-Rect coverRect(Size box, Size image) {
-  final scale = box.width / image.width > box.height / image.height
-      ? box.width / image.width
-      : box.height / image.height;
-  final w = image.width * scale, h = image.height * scale;
-  return Rect.fromLTWH((box.width - w) / 2, (box.height - h) / 2, w, h);
-}
 
 /// Village map: one fixed slot per building, placed in image space on `village.webp`
 /// so slots stay on the grass whatever the phone's aspect ratio crops away.
