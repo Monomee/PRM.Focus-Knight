@@ -40,28 +40,8 @@ class _SetupSheetState extends State<_SetupSheet> {
     super.dispose();
   }
 
-  Future<int?> _askMinutes(String title, int Function(String) clamp) async {
-    final ctrl = TextEditingController();
-    final value = await showDialog<int>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Flat.card,
-        title: Text(title, style: const TextStyle(fontSize: 15)),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(suffixText: 'phút'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Huỷ')),
-          TextButton(onPressed: () => Navigator.pop(ctx, clamp(ctrl.text)), child: const Text('OK')),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    return value;
-  }
+  Future<int?> _askMinutes(String title, int Function(String) clamp) =>
+      showDialog<int>(context: context, builder: (_) => _MinutesDialog(title: title, clamp: clamp));
 
   Widget _chips(List<int> presets, int current, ValueChanged<int> onPick, Future<int?> Function() custom) {
     final isCustom = !presets.contains(current);
@@ -213,4 +193,40 @@ class _SetupSheetState extends State<_SetupSheet> {
       ),
     );
   }
+}
+
+/// Owns its TextEditingController so it is disposed only after the dialog's exit animation.
+class _MinutesDialog extends StatefulWidget {
+  const _MinutesDialog({required this.title, required this.clamp});
+  final String title;
+  final int Function(String) clamp;
+
+  @override
+  State<_MinutesDialog> createState() => _MinutesDialogState();
+}
+
+class _MinutesDialogState extends State<_MinutesDialog> {
+  final _ctrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        backgroundColor: Flat.card,
+        title: Text(widget.title, style: const TextStyle(fontSize: 15)),
+        content: TextField(
+          controller: _ctrl,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(suffixText: 'phút'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Huỷ')),
+          TextButton(onPressed: () => Navigator.pop(context, widget.clamp(_ctrl.text)), child: const Text('OK')),
+        ],
+      );
 }
