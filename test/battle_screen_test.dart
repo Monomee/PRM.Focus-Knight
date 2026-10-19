@@ -95,4 +95,20 @@ void main() {
     }
     await finish(tester);
   });
+
+  testWidgets('mindful dialog closes when the session leaves focus', (tester) async {
+    controller.startFocusSession(task: 'Học', durationSeconds: 1500, totalSessions: 2);
+    await pumpBattle(tester);
+    await tester.binding.handlePopRoute(); // system back while focusing
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.byType(Dialog), findsOneWidget);
+
+    controller.debugCompleteFocus();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(Dialog), findsNothing);
+    expect(controller.isResting, isTrue);
+    await finish(tester);
+  });
 }
