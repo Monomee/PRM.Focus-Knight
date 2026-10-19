@@ -180,37 +180,65 @@ class ScreenTimeTracker extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Package of the most recent ACTIVITY_RESUMED event at or after [sinceMs].
+  static String? latestResumedPackage(List<EventUsageInfo> events, {required int sinceMs, String? ignorePackage}) {
+    String? pkg;
+    var best = -1;
+    for (final e in events) {
+      final resumed = e.eventTypeValue == 1 || e.eventType == '1' || e.eventTypeDescription == 'ACTIVITY_RESUMED';
+      final t = int.tryParse(e.timeStamp ?? '') ?? 0;
+      if (resumed && t >= sinceMs && t > best && e.packageName != ignorePackage) {
+        best = t;
+        pkg = e.packageName;
+      }
+    }
+    return pkg;
+  }
+
   /// Queries recent usage events to detect if a blacklisted app is currently in the foreground
   Future<String?> getActiveBlacklistedPackage() async {
     if (!_hasPermission) return null;
     try {
       final now = DateTime.now();
-      final events = await UsageStats.queryEvents(
-        now.subtract(const Duration(seconds: 12)),
-        now,
-      );
-      if (events.isEmpty) return null;
-
-      final resumedEvents = events.where((e) {
-        return e.eventTypeValue == 1 ||
-            e.eventType == '1' ||
-            e.eventTypeDescription == 'ACTIVITY_RESUMED';
-      }).toList();
-
-      if (resumedEvents.isEmpty) return null;
-
-      resumedEvents.sort((a, b) {
-        final tA = int.tryParse(a.timeStamp ?? '0') ?? 0;
-        final tB = int.tryParse(b.timeStamp ?? '0') ?? 0;
-        return tB.compareTo(tA);
-      });
-
-      final latestPackage = resumedEvents.first.packageName;
+      final events = await UsageStats.queryEvents(now.subtract(const Duration(seconds: 12)), now);
+      final latestPackage = latestResumedPackage(events, sinceMs: 0);
       if (latestPackage != null && BlacklistConstants.defaultBlacklist.contains(latestPackage)) {
         return latestPackage;
       }
     } catch (_) {}
     return null;
+  }
+
+  // ponytail: own applicationId hardcoded; read it from the platform if the id ever changes.
+  static const _selfPackage = 'com.example.test_dart';
+
+  /// The other app's RESUMED event lands before Flutter reports `paused`, so look back a bit.
+  static const _leftSlack = Duration(seconds: 5);
+
+  DateTime? _leftAt;
+  String? _foregroundSinceLeft;
+
+  /// Call when FocusKnight goes to the background.
+  void markLeftApp() {
+    _leftAt = DateTime.now();
+    _foregroundSinceLeft = null;
+  }
+
+  /// App the user switched to after leaving FocusKnight (null = none yet, e.g. screen locked).
+  /// Remembered between polls, so staying in one app longer than the query window still counts.
+  Future<String?> foregroundSinceLeft() async {
+    final leftAt = _leftAt;
+    if (!_hasPermission || leftAt == null) return null;
+    try {
+      final now = DateTime.now();
+      final windowStart = now.subtract(const Duration(seconds: 15));
+      final since = leftAt.subtract(_leftSlack);
+      final events = await UsageStats.queryEvents(since.isAfter(windowStart) ? since : windowStart, now);
+      final pkg =
+          latestResumedPackage(events, sinceMs: since.millisecondsSinceEpoch, ignorePackage: _selfPackage);
+      if (pkg != null) _foregroundSinceLeft = pkg;
+    } catch (_) {}
+    return _foregroundSinceLeft;
   }
 
   String formatDuration(Duration duration) {

@@ -1,28 +1,61 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../../core/game/economy.dart';
+import '../../core/game/player_state.dart';
+import '../../core/game/village.dart';
 import '../../core/services/foreground_task_service.dart';
 import '../dashboard/services/focus_history_service.dart';
 
 enum SessionPhase {
   setup, // Choosing task and duration
-  focus, // Active Pomodoro focus session (auto-battle runs, upgrades locked)
-  rest, // Rest break (upgrades unlocked in Camp Shop)
+  focus, // Active Pomodoro focus session
+  rest, // Rest break between sessions
 }
 
-/// Controller managing Pomodoro focus countdown, rest break, and phase transitions.
+/// Outcome of a whole battle (chain of sessions).
+class BattleResult {
+  const BattleResult({
+    required this.won,
+    required this.coins,
+    required this.logs,
+    required this.focusSeconds,
+    required this.sessions,
+  });
+  final bool won;
+  final int coins;
+  final int logs;
+  final int focusSeconds;
+  final int sessions;
+}
+
+/// Controller for a battle: Pomodoro countdown, rest breaks, hero HP, pause, and the
+/// battle escrow. Coin/Log and focus hours are only committed when the whole battle is won.
 class FocusSessionController extends ChangeNotifier {
+  FocusSessionController({PlayerState? player, FocusHistoryService? history})
+      : player = player ?? PlayerState(),
+        _history = history ?? FocusHistoryService.instance;
+
+  final PlayerState player;
+  final FocusHistoryService _history;
+
   SessionPhase _phase = SessionPhase.setup;
   SessionPhase get phase => _phase;
 
   String _taskName = 'Code API';
   String get taskName => _taskName;
 
-  int _totalFocusSeconds = 60; // Default 1 min for fast testing, togglable to 25 min (1500s)
+  int _totalFocusSeconds = 60;
   int get totalFocusSeconds => _totalFocusSeconds;
 
-  int _totalRestSeconds = 300; // 5 minutes (300s), or testable
+  int _totalRestSeconds = 300;
   int get totalRestSeconds => _totalRestSeconds;
+
+  int _longRestSeconds = 900;
+  int _longBreakEvery = 0;
+  bool _isLongRest = false;
+  bool get isLongRest => _isLongRest;
 
   int _remainingSeconds = 60;
   int get remainingSeconds => _remainingSeconds;
@@ -33,127 +66,224 @@ class FocusSessionController extends ChangeNotifier {
   int _currentSession = 1;
   int get currentSession => _currentSession;
 
+  // Battle state
+  int _heroHp = kHeroMaxHp;
+  int get heroHp => _heroHp;
+  int _pendingCoins = 0;
+  int get pendingCoins => _pendingCoins;
+  int _pendingLogs = 0;
+  int get pendingLogs => _pendingLogs;
+  final List<int> _completedSessionSeconds = [];
+  int get pendingFocusSeconds => _completedSessionSeconds.fold(0, (a, b) => a + b);
+  ({int coins, int logs})? _lastSessionReward;
+  ({int coins, int logs})? get lastSessionReward => _lastSessionReward;
+  BattleResult? _lastResult;
+  BattleResult? get lastResult => _lastResult;
+
+  // Pause state
+  bool _isPaused = false;
+  bool get isPaused => _isPaused;
+  bool _pauseUsed = false;
+  bool get canPause => isFocusing && !_isPaused && !_pauseUsed;
+  int _pauseRemainingSeconds = kMaxPauseSeconds;
+  int get pauseRemainingSeconds => _pauseRemainingSeconds;
+
   Timer? _countdownTimer;
 
   bool get isFocusing => _phase == SessionPhase.focus;
   bool get isResting => _phase == SessionPhase.rest;
   bool get isSetup => _phase == SessionPhase.setup;
+  bool get inBattle => !isSetup;
+
+  /// Goblin house HP: drains linearly with the focus countdown.
+  double get houseHpRatio =>
+      isFocusing && _totalFocusSeconds > 0 ? (_remainingSeconds / _totalFocusSeconds).clamp(0.0, 1.0) : 0.0;
 
   double get progressRatio {
     if (_phase == SessionPhase.focus && _totalFocusSeconds > 0) {
       return ((_totalFocusSeconds - _remainingSeconds) / _totalFocusSeconds).clamp(0.0, 1.0);
-    } else if (_phase == SessionPhase.rest && _totalRestSeconds > 0) {
-      return ((_totalRestSeconds - _remainingSeconds) / _totalRestSeconds).clamp(0.0, 1.0);
+    } else if (_phase == SessionPhase.rest) {
+      final total = _isLongRest ? _longRestSeconds : _totalRestSeconds;
+      if (total > 0) return ((total - _remainingSeconds) / total).clamp(0.0, 1.0);
     }
     return 0.0;
   }
 
-  String get formattedTime {
-    final minutes = (_remainingSeconds ~/ 60).toString().padLeft(2, '0');
-    final seconds = (_remainingSeconds % 60).toString().padLeft(2, '0');
-    return '$minutes:$seconds';
-  }
+  String get formattedTime => _format(_remainingSeconds);
+  String get formattedPauseTime => _format(_pauseRemainingSeconds);
 
-  /// Start a new focus session or multi-session cycle
+  static String _format(int s) =>
+      '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
+
+  String get _sessionLabel => _totalSessions > 1 ? ' (Phiên $_currentSession/$_totalSessions)' : '';
+
+  /// Start a new battle (one or more focus sessions)
   void startFocusSession({
     required String task,
     required int durationSeconds,
     int totalSessions = 1,
     int restDurationSeconds = 300,
+    int longBreakEvery = 0,
+    int longRestSeconds = 900,
   }) {
+    if (inBattle) return; // never wipe a running battle's escrow
     _countdownTimer?.cancel();
     _taskName = task.trim().isEmpty ? 'Deep Work' : task.trim();
     _totalSessions = totalSessions > 0 ? totalSessions : 1;
     _currentSession = 1;
     _totalFocusSeconds = durationSeconds;
     _totalRestSeconds = restDurationSeconds;
-    _remainingSeconds = durationSeconds;
-    _phase = SessionPhase.focus;
-    notifyListeners();
-
-    _startFocusCountdown();
+    _longBreakEvery = longBreakEvery;
+    _longRestSeconds = longRestSeconds;
+    _heroHp = kHeroMaxHp;
+    _pendingCoins = 0;
+    _pendingLogs = 0;
+    _completedSessionSeconds.clear();
+    _lastSessionReward = null;
+    _lastResult = null;
+    _beginFocus();
   }
 
-  void _startFocusCountdown() {
-    _countdownTimer?.cancel();
-    final sessionLabel = _totalSessions > 1 ? ' (Phiên $_currentSession/$_totalSessions)' : '';
+  void _beginFocus() {
+    _phase = SessionPhase.focus;
+    _isLongRest = false;
+    _isPaused = false;
+    _pauseUsed = false;
+    _pauseRemainingSeconds = kMaxPauseSeconds;
+    _remainingSeconds = _totalFocusSeconds;
+    notifyListeners();
     ForegroundTaskService.startSessionNotification(
-      taskName: '$_taskName$sessionLabel',
+      taskName: '$_taskName$_sessionLabel',
       remainingTime: formattedTime,
     );
+    _startTicker();
+  }
 
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remainingSeconds > 1) {
-        _remainingSeconds--;
+  void _startTicker() {
+    _countdownTimer?.cancel();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  void _tick() {
+    if (_isPaused) {
+      _pauseRemainingSeconds--;
+      if (_pauseRemainingSeconds <= 0) {
+        resumeFromPause();
+      } else {
         notifyListeners();
         ForegroundTaskService.updateSessionNotification(
-          taskName: '$_taskName$sessionLabel',
-          remainingTime: formattedTime,
+          taskName: '$_taskName$_sessionLabel',
+          remainingTime: 'Tạm dừng $formattedPauseTime',
         );
-      } else {
-        _remainingSeconds = 0;
-        _onFocusCompleted();
       }
-    });
+      return;
+    }
+    if (_remainingSeconds > 1) {
+      _remainingSeconds--;
+      notifyListeners();
+      ForegroundTaskService.updateSessionNotification(
+        taskName: isFocusing ? '$_taskName$_sessionLabel' : _restLabel,
+        remainingTime: formattedTime,
+      );
+      return;
+    }
+    _remainingSeconds = 0;
+    if (isFocusing) {
+      _onFocusCompleted();
+    } else {
+      _onRestCompleted();
+    }
   }
+
+  String get _restLabel => '${_isLongRest ? 'Nghỉ dài' : 'Nghỉ giải lao'} (Xong phiên $_currentSession/$_totalSessions)';
+
+  @visibleForTesting
+  void debugCompleteFocus() => _onFocusCompleted();
 
   /// Triggered when focus countdown reaches 0
   void _onFocusCompleted() {
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
-
-    // Record completed session in lightweight FocusHistoryService
-    FocusHistoryService.instance.recordCompletedSession(_totalFocusSeconds);
-
     HapticFeedback.vibrate();
     SystemSound.play(SystemSoundType.alert);
 
+    final reward = sessionReward(
+      focusMinutes: _totalFocusSeconds ~/ 60,
+      barracksLevel: player.levelOf(Building.barracks),
+    );
+    _lastSessionReward = reward;
+    _pendingCoins += reward.coins;
+    _pendingLogs += reward.logs;
+    _completedSessionSeconds.add(_totalFocusSeconds);
+
     if (_currentSession < _totalSessions) {
-      // More sessions remaining in this cycle: transition to Rest break!
+      _isLongRest = _longBreakEvery > 0 && _currentSession % _longBreakEvery == 0;
+      final rest = _isLongRest ? _longRestSeconds : _totalRestSeconds;
       ForegroundTaskService.notifySessionEvent(
         title: '🎉 Hoàn thành phiên $_currentSession/$_totalSessions!',
-        message: 'Bắt đầu nghỉ ngơi ${_totalRestSeconds >= 60 ? "${_totalRestSeconds ~/ 60} phút" : "$_totalRestSeconds giây"}. Phiên tiếp theo sẽ tự động bắt đầu.',
+        message: 'Bắt đầu nghỉ ${rest >= 60 ? "${rest ~/ 60} phút" : "$rest giây"}. Phiên tiếp theo sẽ tự động bắt đầu.',
       );
       _phase = SessionPhase.rest;
-      _remainingSeconds = _totalRestSeconds;
+      _isPaused = false;
+      _remainingSeconds = rest;
       notifyListeners();
-
-      _startRestCountdown();
+      ForegroundTaskService.startSessionNotification(taskName: _restLabel, remainingTime: formattedTime);
+      _startTicker();
     } else {
-      // All sessions completed!
       ForegroundTaskService.notifySessionEvent(
-        title: '🏆 Hoàn thành mục tiêu tập trung!',
+        title: '🏆 Hoàn thành trận!',
         message: 'Chúc mừng! Bạn đã hoàn thành toàn bộ $_totalSessions phiên tập trung.',
       );
       HapticFeedback.heavyImpact();
-      _phase = SessionPhase.setup;
-      _remainingSeconds = _totalFocusSeconds;
-      _currentSession = 1;
-      notifyListeners();
+      _settleVictory();
     }
   }
 
-  void _startRestCountdown() {
-    _countdownTimer?.cancel();
-    final restLabel = 'Nghỉ giải lao (Xong phiên $_currentSession/$_totalSessions)';
-    ForegroundTaskService.startSessionNotification(
-      taskName: restLabel,
-      remainingTime: formattedTime,
+  void _settleVictory() {
+    final seconds = List<int>.of(_completedSessionSeconds);
+    _lastResult = BattleResult(
+      won: true,
+      coins: _pendingCoins,
+      logs: _pendingLogs,
+      focusSeconds: pendingFocusSeconds,
+      sessions: seconds.length,
     );
-
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remainingSeconds > 1) {
-        _remainingSeconds--;
-        notifyListeners();
-        ForegroundTaskService.updateSessionNotification(
-          taskName: restLabel,
-          remainingTime: formattedTime,
-        );
-      } else {
-        _remainingSeconds = 0;
-        _onRestCompleted();
+    final coins = _pendingCoins, logs = _pendingLogs;
+    _resetToSetup();
+    () async {
+      for (final s in seconds) {
+        await _history.recordCompletedSession(s);
       }
-    });
+      await player.deposit(coins: coins, logs: logs);
+    }();
+  }
+
+  void _defeat() {
+    _countdownTimer?.cancel();
+    ForegroundTaskService.stopSessionNotification();
+    HapticFeedback.heavyImpact();
+    _history.recordInterruption();
+    _lastResult = BattleResult(
+      won: false,
+      coins: 0,
+      logs: 0,
+      focusSeconds: 0,
+      sessions: _completedSessionSeconds.length,
+    );
+    _resetToSetup();
+  }
+
+  void _resetToSetup() {
+    _countdownTimer?.cancel();
+    _phase = SessionPhase.setup;
+    _isPaused = false;
+    _isLongRest = false;
+    _remainingSeconds = _totalFocusSeconds;
+    _currentSession = 1;
+    _pendingCoins = 0;
+    _pendingLogs = 0;
+    _completedSessionSeconds.clear();
+    notifyListeners();
   }
 
   /// Triggered when rest break finishes
@@ -162,72 +292,76 @@ class FocusSessionController extends ChangeNotifier {
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.vibrate();
     SystemSound.play(SystemSoundType.alert);
-
-    if (_currentSession < _totalSessions) {
-      // Automatically advance to the next focus session!
-      _currentSession++;
-      ForegroundTaskService.notifySessionEvent(
-        title: '⚡ Bắt đầu phiên $_currentSession/$_totalSessions!',
-        message: 'Hết giờ nghỉ! Hiệp sĩ tiếp tục chiến đấu tập trung.',
-      );
-      _phase = SessionPhase.focus;
-      _remainingSeconds = _totalFocusSeconds;
-      notifyListeners();
-
-      _startFocusCountdown();
-    } else {
-      _phase = SessionPhase.setup;
-      _remainingSeconds = _totalFocusSeconds;
-      _currentSession = 1;
-      notifyListeners();
-    }
+    ForegroundTaskService.notifySessionEvent(
+      title: '⚡ Bắt đầu phiên ${_currentSession + 1}/$_totalSessions!',
+      message: 'Hết giờ nghỉ! Hiệp sĩ tiếp tục chiến đấu tập trung.',
+    );
+    finishRestBreak();
   }
 
-  /// Skip rest break directly to next focus session or setup
+  /// Skip rest break directly to next focus session
   void finishRestBreak() {
+    if (!isResting) return;
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
+    _currentSession++;
+    _beginFocus();
+  }
 
-    if (_currentSession < _totalSessions) {
-      _currentSession++;
-      _phase = SessionPhase.focus;
-      _remainingSeconds = _totalFocusSeconds;
-      notifyListeners();
-      _startFocusCountdown();
+  /// One pause per session, up to [kMaxPauseSeconds]; auto-resumes.
+  bool pause() {
+    if (!canPause) return false;
+    _isPaused = true;
+    _pauseUsed = true;
+    _pauseRemainingSeconds = kMaxPauseSeconds;
+    notifyListeners();
+    return true;
+  }
+
+  void resumeFromPause() {
+    if (!_isPaused) return;
+    _isPaused = false;
+    notifyListeners();
+    ForegroundTaskService.updateSessionNotification(
+      taskName: '$_taskName$_sessionLabel',
+      remainingTime: formattedTime,
+    );
+  }
+
+  /// Hero takes [kPenaltyHp] damage for using a blacklisted app while focusing (incl. paused);
+  /// rest breaks are free. 0 HP loses the battle.
+  void applyBlacklistPenalty() {
+    if (!isFocusing) return;
+    _heroHp = math.max(0, _heroHp - kPenaltyHp);
+    if (_heroHp == 0) {
+      _defeat();
     } else {
-      _phase = SessionPhase.setup;
-      _remainingSeconds = _totalFocusSeconds;
-      _currentSession = 1;
       notifyListeners();
     }
   }
 
-  /// Cancel current session and return to setup
-  void cancelSession() {
-    _countdownTimer?.cancel();
-    ForegroundTaskService.stopSessionNotification();
-    _phase = SessionPhase.setup;
-    _remainingSeconds = _totalFocusSeconds;
-    _currentSession = 1;
+  /// Takes [kDistractionTax] coins from the battle escrow (never below 0).
+  void applyDistractionTax() {
+    if (!isFocusing) return;
+    _pendingCoins = math.max(0, _pendingCoins - kDistractionTax);
     notifyListeners();
   }
 
-  /// Forcibly abandon session (via Mindful Interruption Log or forced exit)
-  void forceAbandonSession({String? reason}) {
-    _countdownTimer?.cancel();
+  /// Cancel current session and return to setup (no rewards, nothing recorded)
+  void cancelSession() {
     ForegroundTaskService.stopSessionNotification();
-    HapticFeedback.heavyImpact();
-    // Record interruption in telemetry for Distraction Velocity
-    FocusHistoryService.instance.recordInterruption();
-    _phase = SessionPhase.setup;
-    _remainingSeconds = _totalFocusSeconds;
-    _currentSession = 1;
-    notifyListeners();
+    _resetToSetup();
+  }
+
+  /// Give up the battle: forfeits all escrowed rewards and hours.
+  void forceAbandonSession({String? reason}) {
+    if (!inBattle) return;
+    _defeat();
   }
 
   /// Records an interruption event (e.g. app sent to background during focus)
   void recordInterruptionEvent() {
-    FocusHistoryService.instance.recordInterruption();
+    _history.recordInterruption();
     notifyListeners();
   }
 

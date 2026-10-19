@@ -78,7 +78,8 @@ void main() {
       addTearDown(() => tester.view.resetPhysicalSize());
 
       final analytics = AnalyticsService();
-      await analytics.refreshAnalytics();
+      // Real I/O (SharedPreferences) must run outside the widget test's fake-async zone.
+      await tester.runAsync(analytics.refreshAnalytics);
 
       await tester.pumpWidget(
         MaterialApp(

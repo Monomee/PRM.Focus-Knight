@@ -1,19 +1,13 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
 
-/// Service managing the full-screen warning overlay blocker, 10s grace period, and permissions
+/// Service managing the full-screen warning overlay blocker and its permission
 class OverlayService extends ChangeNotifier {
   bool _hasPermission = false;
   bool get hasPermission => _hasPermission;
 
   bool _isOverlayOpen = false;
   bool get isOverlayOpen => _isOverlayOpen;
-
-  Timer? _gracePeriodTimer;
-  int _graceSecondsRemaining = 10;
-  int get graceSecondsRemaining => _graceSecondsRemaining;
-  bool get isGracePeriodActive => _gracePeriodTimer != null && _gracePeriodTimer!.isActive;
 
   OverlayService() {
     checkPermission();
@@ -47,30 +41,6 @@ class OverlayService extends ChangeNotifier {
       await Future.delayed(const Duration(milliseconds: 500));
       await checkPermission();
     } catch (_) {}
-  }
-
-  /// Start 10s grace period when user leaves the app during active Focus session
-  void startGracePeriod({required Function() onGraceExpired}) {
-    cancelGracePeriod();
-    _graceSecondsRemaining = 10;
-    notifyListeners();
-
-    _gracePeriodTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_graceSecondsRemaining > 1) {
-        _graceSecondsRemaining--;
-        notifyListeners();
-      } else {
-        _graceSecondsRemaining = 0;
-        cancelGracePeriod();
-        onGraceExpired();
-      }
-    });
-  }
-
-  void cancelGracePeriod() {
-    _gracePeriodTimer?.cancel();
-    _gracePeriodTimer = null;
-    notifyListeners();
   }
 
   bool isAppInForeground = true;
@@ -108,6 +78,23 @@ class OverlayService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Sends live battle state to the overlay isolate (it can't read the controller directly).
+  Future<void> pushState({
+    required String appName,
+    required int heroHp,
+    required int pendingCoins,
+    required bool defeated,
+  }) async {
+    try {
+      await FlutterOverlayWindow.shareData({
+        'app': appName,
+        'hp': heroHp,
+        'coins': pendingCoins,
+        'defeated': defeated,
+      });
+    } catch (_) {}
+  }
+
   /// Close the overlay
   Future<void> closeBlockerOverlay() async {
     try {
@@ -117,9 +104,4 @@ class OverlayService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  @override
-  void dispose() {
-    _gracePeriodTimer?.cancel();
-    super.dispose();
-  }
 }
