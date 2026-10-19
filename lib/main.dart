@@ -8,6 +8,8 @@ import 'features/shell/app_shell.dart';
 import 'features/dashboard/services/focus_history_service.dart';
 import 'features/focus_session/focus_session_controller.dart';
 import 'core/game/player_state.dart';
+import 'core/game/village.dart';
+import 'core/services/distraction_guard.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
 import 'features/telemetry/screen_time_tracker.dart';
 
@@ -71,6 +73,32 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   late final OverlayService _overlayService;
 
   Timer? _distractionCheckTimer;
+  late final DistractionGuard _guard = DistractionGuard(
+    graceSeconds: () => graceSecondsFor(_player.levelOf(Building.tower)),
+    onPenalty: (pkg) {
+      _sessionController.applyBlacklistPenalty();
+      _overlayService.showBlockerOverlay(
+        reason: '${BlacklistConstants.appNames[pkg] ?? pkg} bị chặn trong lúc tập trung!',
+      );
+      _pushOverlayState(pkg);
+    },
+    onTax: () {
+      _sessionController.applyDistractionTax();
+      _pushOverlayState(null);
+    },
+    onLeftBlacklisted: _overlayService.closeBlockerOverlay,
+  );
+  String? _blockedPkg;
+
+  void _pushOverlayState(String? pkg) {
+    _blockedPkg = pkg ?? _blockedPkg;
+    _overlayService.pushState(
+      appName: BlacklistConstants.appNames[_blockedPkg] ?? _blockedPkg ?? '',
+      heroHp: _sessionController.heroHp,
+      pendingCoins: _sessionController.pendingCoins,
+      defeated: _sessionController.lastResult?.won == false && !_sessionController.inBattle,
+    );
+  }
 
   @override
   void initState() {
@@ -104,49 +132,35 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
-      // FocusKnight moved to background
+      // FocusKnight moved to background (hidden and paused both fire; count once)
+      final justLeft = _overlayService.isAppInForeground;
       _overlayService.isAppInForeground = false;
+      if (justLeft && _sessionController.isFocusing) {
+        _sessionController.recordInterruptionEvent();
+      }
 
-      // Start periodic monitor for blacklisted apps when in background
+      // Periodic monitor for blacklisted apps while in background
       _distractionCheckTimer?.cancel();
       _distractionCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
         if (_overlayService.isAppInForeground) return;
 
         final blacklistedPkg = await _screenTimeTracker.getActiveBlacklistedPackage();
-        if (blacklistedPkg != null) {
-          final appName = BlacklistConstants.appNames[blacklistedPkg] ?? blacklistedPkg;
-          if (_sessionController.isFocusing) {
-            _overlayService.showBlockerOverlay(
-              reason: 'Blocked! Access to $appName is restricted while focusing.',
-            );
-          } else if (_screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
-            // Standard system notification popup (NOT full-screen blocker overlay!)
-            final limit = _screenTimeTracker.getAppLimit(blacklistedPkg);
-            ForegroundTaskService.notifyAppLimitExceeded(
-              appName: appName,
-              packageName: blacklistedPkg,
-              limitMinutes: limit,
-            );
-          }
+        if (_sessionController.inBattle) {
+          _guard.tick(blacklistedPkg, DateTime.now());
+        } else if (blacklistedPkg != null && _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
+          // Standard system notification popup (NOT full-screen blocker overlay!)
+          ForegroundTaskService.notifyAppLimitExceeded(
+            appName: BlacklistConstants.appNames[blacklistedPkg] ?? blacklistedPkg,
+            packageName: blacklistedPkg,
+            limitMinutes: _screenTimeTracker.getAppLimit(blacklistedPkg),
+          );
         }
       });
-
-      // If in active focus, start 10-second grace period
-      if (_sessionController.isFocusing) {
-        _overlayService.startGracePeriod(
-          onGraceExpired: () {
-            _overlayService.showBlockerOverlay(
-              reason:
-                  'Quest abandoned! You left FocusKnight while focusing on ${_sessionController.taskName}.',
-            );
-          },
-        );
-      }
     } else if (state == AppLifecycleState.resumed) {
-      // User returned to FocusKnight: cancel grace period, stop tracker timer, close overlay immediately
+      // User returned to FocusKnight: stop tracker timer, close overlay immediately
       _overlayService.isAppInForeground = true;
       _distractionCheckTimer?.cancel();
-      _overlayService.cancelGracePeriod();
+      _guard.reset();
       _overlayService.closeBlockerOverlay();
       _screenTimeTracker.refreshUsageStats();
     }
