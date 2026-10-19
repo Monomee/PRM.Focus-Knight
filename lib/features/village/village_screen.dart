@@ -25,24 +25,50 @@ class VillageScreen extends StatelessWidget {
 
   static const imageSize = Size(1080, 1920);
 
+  /// Space under each sprite for the name and lock lines, and the minimum column width.
+  static const labelBand = 40.0;
+  static const labelWidth = 100.0;
+
   // (left, top, width) as fractions of the background image; grass spans ~x 0.06–0.94, y 0.22–0.80,
-  // campfire at (0.5, 0.47). Kept within x 0.10–0.89 because tall phones crop the sides.
+  // campfire at ~(0.5, 0.46). Label columns are centered at x ~0.21–0.78 so they survive the side crop
+  // of tall phones.
   static const _slots = <Building, (double, double, double)>{
-    Building.tower: (0.11, 0.26, 0.17),
-    Building.castle: (0.33, 0.22, 0.34),
-    Building.barracks: (0.68, 0.25, 0.21),
-    Building.granary: (0.11, 0.43, 0.19),
-    Building.archery: (0.67, 0.42, 0.22),
-    Building.house2: (0.11, 0.61, 0.18),
-    Building.monastery: (0.40, 0.57, 0.20),
-    Building.house3: (0.71, 0.61, 0.18),
+    Building.tower: (0.155, 0.23, 0.12),
+    Building.castle: (0.35, 0.23, 0.30),
+    Building.barracks: (0.69, 0.23, 0.18),
+    Building.granary: (0.145, 0.43, 0.14),
+    Building.archery: (0.68, 0.43, 0.18),
+    Building.house2: (0.145, 0.63, 0.14),
+    Building.monastery: (0.41, 0.555, 0.18),
+    Building.house3: (0.69, 0.63, 0.14),
   };
 
-  /// Slot rect in [box] coordinates (height is the slot width; content may extend below).
+
+  /// Sprite width / height (the Tiny Swords building sheets).
+  static const _aspect = <Building, double>{
+    Building.tower: 128 / 256,
+    Building.castle: 320 / 256,
+    Building.barracks: 192 / 256,
+    Building.granary: 128 / 192,
+    Building.archery: 192 / 256,
+    Building.house2: 128 / 192,
+    Building.monastery: 192 / 320,
+    Building.house3: 128 / 192,
+  };
+
+  /// Whole footprint of a slot: the sprite plus the (possibly wider) label column under it.
+  static Rect slotArea(Building b, Size box) {
+    final r = slotRect(b, box);
+    final width = r.width > labelWidth ? r.width : labelWidth;
+    return Rect.fromLTWH(r.center.dx - width / 2, r.top, width, r.height + labelBand);
+  }
+
+  /// Sprite rect of a slot in [box] coordinates; the label band sits below it.
   static Rect slotRect(Building b, Size box) {
     final img = coverRect(box, imageSize);
     final (l, t, w) = _slots[b]!;
-    return Rect.fromLTWH(img.left + l * img.width, img.top + t * img.height, w * img.width, w * img.width);
+    final width = w * img.width;
+    return Rect.fromLTWH(img.left + l * img.width, img.top + t * img.height, width, width / _aspect[b]!);
   }
 
   @override
@@ -55,13 +81,7 @@ class VillageScreen extends StatelessWidget {
           Positioned.fill(
             child: Image.asset('ui/scenes/village.webp', fit: BoxFit.cover, filterQuality: FilterQuality.none),
           ),
-          for (final b in _slots.keys)
-            Positioned(
-              left: slotRect(b, box.biggest).left,
-              top: slotRect(b, box.biggest).top,
-              width: slotRect(b, box.biggest).width,
-              child: _slot(context, b, rank),
-            ),
+          for (final b in _slots.keys) _positioned(context, b, rank, box.biggest),
           Positioned(
             left: 12,
             right: 12,
@@ -91,7 +111,17 @@ class VillageScreen extends StatelessWidget {
         child: child,
       );
 
-  Widget _slot(BuildContext context, Building b, Rank rank) {
+  Widget _positioned(BuildContext context, Building b, Rank rank, Size box) {
+    final area = slotArea(b, box);
+    return Positioned(
+      left: area.left,
+      top: area.top,
+      width: area.width,
+      child: _slot(context, b, rank, slotRect(b, box).size),
+    );
+  }
+
+  Widget _slot(BuildContext context, Building b, Rank rank, Size sprite) {
     final level = player.levelOf(b);
     final required = b.requiredCharacter;
     final locked = required != null && !isCharacterUnlocked(required, rank);
@@ -107,10 +137,11 @@ class VillageScreen extends StatelessWidget {
       onTap: () => showBuildingSheet(context, player: player, building: b, rank: rank),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         if (level > 0)
-          Image.asset(b.asset, filterQuality: FilterQuality.none)
+          Image.asset(b.asset,
+              width: sprite.width, height: sprite.height, fit: BoxFit.contain, filterQuality: FilterQuality.none)
         else
-          AspectRatio(
-            aspectRatio: 1,
+          SizedBox.fromSize(
+            size: sprite,
             child: Container(
               decoration: BoxDecoration(
                 color: const Color(0x33000000),
