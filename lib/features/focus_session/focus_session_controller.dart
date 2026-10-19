@@ -7,6 +7,7 @@ import '../../core/game/player_state.dart';
 import '../../core/game/village.dart';
 import '../../core/services/foreground_task_service.dart';
 import '../dashboard/services/focus_history_service.dart';
+import 'settlement.dart';
 
 enum SessionPhase {
   setup, // Choosing task and duration
@@ -250,12 +251,7 @@ class FocusSessionController extends ChangeNotifier {
     );
     final coins = _pendingCoins, logs = _pendingLogs;
     _resetToSetup();
-    () async {
-      for (final s in seconds) {
-        await _history.recordCompletedSession(s);
-      }
-      await player.deposit(coins: coins, logs: logs);
-    }();
+    Settlement.commit(coins: coins, logs: logs, sessionSeconds: seconds, player: player, history: _history);
   }
 
   void _defeat() {

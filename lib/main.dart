@@ -7,6 +7,7 @@ import 'core/services/overlay_service.dart';
 import 'features/shell/app_shell.dart';
 import 'features/dashboard/services/focus_history_service.dart';
 import 'features/focus_session/focus_session_controller.dart';
+import 'features/focus_session/settlement.dart';
 import 'core/game/player_state.dart';
 import 'core/game/village.dart';
 import 'core/services/distraction_guard.dart';
@@ -113,11 +114,18 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     _overlayService = OverlayService();
   }
 
-  /// Weekly granary ticket, then use it to cover a missed day if needed.
   Future<void> _initProgress() async {
     await _player.load();
     final history = FocusHistoryService.instance;
     await history.loadData();
+    // Finish a battle payout that was cut short by the app being killed.
+    await Settlement.resume(_player, history);
+    await _refreshStreakShield();
+  }
+
+  /// Weekly granary ticket, then use it to cover a missed day if needed. Idempotent.
+  Future<void> _refreshStreakShield() async {
+    final history = FocusHistoryService.instance;
     final now = DateTime.now();
     await _player.grantWeeklyTicket(now);
     await history.tryShieldGap(
@@ -181,6 +189,8 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       // Permissions may have been granted in system Settings while we were away.
       _overlayService.checkPermission();
       _screenTimeTracker.checkPermission().then((_) => _screenTimeTracker.refreshUsageStats());
+      // The process can live for days (foreground service): re-check the weekly ticket.
+      _refreshStreakShield();
     }
   }
 
