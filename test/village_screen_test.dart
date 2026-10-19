@@ -63,4 +63,23 @@ void main() {
     expect(player.levelOf(Building.tower), 1);
     expect(player.coins, 800);
   });
+
+  test('coverRect matches BoxFit.cover', () {
+    final r = coverRect(const Size(400, 860), VillageScreen.imageSize);
+    expect(r.height, closeTo(860, 1e-6));
+    expect(r.width, closeTo(1080 * 860 / 1920, 1e-6));
+    expect(r.left, closeTo((400 - r.width) / 2, 1e-6));
+    expect(r.top, 0);
+  });
+
+  test('every slot stays on screen for tall and short phones', () {
+    for (final box in const [Size(400, 889), Size(400, 700), Size(360, 800)]) {
+      for (final b in Building.values) {
+        final slot = VillageScreen.slotRect(b, box);
+        expect(slot.left, greaterThanOrEqualTo(0), reason: '$b on $box');
+        expect(slot.right, lessThanOrEqualTo(box.width), reason: '$b on $box');
+        expect(slot.top, greaterThanOrEqualTo(0), reason: '$b on $box');
+      }
+    }
+  });
 }

@@ -6,24 +6,44 @@ import '../../core/widgets/sprite_anim.dart';
 import '../battle/camp_view.dart';
 import 'building_sheet.dart';
 
-/// Village map: one fixed slot per building, positioned as fractions of the map area.
+/// Where an image of [image] size lands inside [box] with [BoxFit.cover], centered.
+Rect coverRect(Size box, Size image) {
+  final scale = box.width / image.width > box.height / image.height
+      ? box.width / image.width
+      : box.height / image.height;
+  final w = image.width * scale, h = image.height * scale;
+  return Rect.fromLTWH((box.width - w) / 2, (box.height - h) / 2, w, h);
+}
+
+/// Village map: one fixed slot per building, placed in image space on `village.webp`
+/// so slots stay on the grass whatever the phone's aspect ratio crops away.
 class VillageScreen extends StatelessWidget {
   const VillageScreen({super.key, required this.player, required this.totalFocusSeconds});
 
   final PlayerState player;
   final int totalFocusSeconds;
 
-  // (left, top, width) as fractions of the map size.
+  static const imageSize = Size(1080, 1920);
+
+  // (left, top, width) as fractions of the background image; grass spans ~x 0.06–0.94, y 0.22–0.80,
+  // campfire at (0.5, 0.47). Kept within x 0.10–0.89 because tall phones crop the sides.
   static const _slots = <Building, (double, double, double)>{
-    Building.castle: (0.30, 0.08, 0.40),
-    Building.tower: (0.05, 0.12, 0.16),
-    Building.barracks: (0.72, 0.10, 0.25),
-    Building.granary: (0.06, 0.42, 0.20),
-    Building.archery: (0.70, 0.40, 0.26),
-    Building.house2: (0.06, 0.70, 0.20),
-    Building.monastery: (0.38, 0.66, 0.24),
-    Building.house3: (0.72, 0.70, 0.20),
+    Building.tower: (0.11, 0.26, 0.17),
+    Building.castle: (0.33, 0.22, 0.34),
+    Building.barracks: (0.68, 0.25, 0.21),
+    Building.granary: (0.11, 0.43, 0.19),
+    Building.archery: (0.67, 0.42, 0.22),
+    Building.house2: (0.11, 0.61, 0.18),
+    Building.monastery: (0.40, 0.57, 0.20),
+    Building.house3: (0.71, 0.61, 0.18),
   };
+
+  /// Slot rect in [box] coordinates (height is the slot width; content may extend below).
+  static Rect slotRect(Building b, Size box) {
+    final img = coverRect(box, imageSize);
+    final (l, t, w) = _slots[b]!;
+    return Rect.fromLTWH(img.left + l * img.width, img.top + t * img.height, w * img.width, w * img.width);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -31,18 +51,16 @@ class VillageScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: player,
       builder: (context, _) => LayoutBuilder(builder: (context, box) {
-        final w = box.maxWidth, h = box.maxHeight;
         return Stack(children: [
           Positioned.fill(
-            child: Image.asset('ui/scenes/camp_fire.webp',
-                fit: BoxFit.cover, alignment: const Alignment(0, 0.1), filterQuality: FilterQuality.none),
+            child: Image.asset('ui/scenes/village.webp', fit: BoxFit.cover, filterQuality: FilterQuality.none),
           ),
-          for (final e in _slots.entries)
+          for (final b in _slots.keys)
             Positioned(
-              left: e.value.$1 * w,
-              top: e.value.$2 * h,
-              width: e.value.$3 * w,
-              child: _slot(context, e.key, rank),
+              left: slotRect(b, box.biggest).left,
+              top: slotRect(b, box.biggest).top,
+              width: slotRect(b, box.biggest).width,
+              child: _slot(context, b, rank),
             ),
           Positioned(
             left: 12,
