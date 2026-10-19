@@ -181,13 +181,13 @@ class ScreenTimeTracker extends ChangeNotifier {
   }
 
   /// Package of the most recent ACTIVITY_RESUMED event at or after [sinceMs].
-  static String? latestResumedPackage(List<EventUsageInfo> events, {required int sinceMs}) {
+  static String? latestResumedPackage(List<EventUsageInfo> events, {required int sinceMs, String? ignorePackage}) {
     String? pkg;
     var best = -1;
     for (final e in events) {
       final resumed = e.eventTypeValue == 1 || e.eventType == '1' || e.eventTypeDescription == 'ACTIVITY_RESUMED';
       final t = int.tryParse(e.timeStamp ?? '') ?? 0;
-      if (resumed && t >= sinceMs && t > best) {
+      if (resumed && t >= sinceMs && t > best && e.packageName != ignorePackage) {
         best = t;
         pkg = e.packageName;
       }
@@ -209,6 +209,12 @@ class ScreenTimeTracker extends ChangeNotifier {
     return null;
   }
 
+  // ponytail: own applicationId hardcoded; read it from the platform if the id ever changes.
+  static const _selfPackage = 'com.example.test_dart';
+
+  /// The other app's RESUMED event lands before Flutter reports `paused`, so look back a bit.
+  static const _leftSlack = Duration(seconds: 5);
+
   DateTime? _leftAt;
   String? _foregroundSinceLeft;
 
@@ -226,8 +232,10 @@ class ScreenTimeTracker extends ChangeNotifier {
     try {
       final now = DateTime.now();
       final windowStart = now.subtract(const Duration(seconds: 15));
-      final events = await UsageStats.queryEvents(leftAt.isAfter(windowStart) ? leftAt : windowStart, now);
-      final pkg = latestResumedPackage(events, sinceMs: leftAt.millisecondsSinceEpoch);
+      final since = leftAt.subtract(_leftSlack);
+      final events = await UsageStats.queryEvents(since.isAfter(windowStart) ? since : windowStart, now);
+      final pkg =
+          latestResumedPackage(events, sinceMs: since.millisecondsSinceEpoch, ignorePackage: _selfPackage);
       if (pkg != null) _foregroundSinceLeft = pkg;
     } catch (_) {}
     return _foregroundSinceLeft;

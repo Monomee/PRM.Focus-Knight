@@ -17,4 +17,15 @@ void main() {
     expect(ScreenTimeTracker.latestResumedPackage(events, sinceMs: 4000), isNull);
     expect(ScreenTimeTracker.latestResumedPackage(const [], sinceMs: 0), isNull);
   });
+
+  test('ignores our own package', () {
+    final events = [
+      _e('com.google.android.youtube', 1000),
+      _e('com.example.test_dart', 2000),
+    ];
+    expect(
+      ScreenTimeTracker.latestResumedPackage(events, sinceMs: 0, ignorePackage: 'com.example.test_dart'),
+      'com.google.android.youtube',
+    );
+  });
 }

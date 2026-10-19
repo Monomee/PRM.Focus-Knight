@@ -178,7 +178,9 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       _distractionCheckTimer?.cancel();
       _guard.reset();
       _overlayService.closeBlockerOverlay();
-      _screenTimeTracker.refreshUsageStats();
+      // Permissions may have been granted in system Settings while we were away.
+      _overlayService.checkPermission();
+      _screenTimeTracker.checkPermission().then((_) => _screenTimeTracker.refreshUsageStats());
     }
   }
 
