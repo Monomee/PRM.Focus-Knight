@@ -3,6 +3,7 @@ import '../../core/game/player_state.dart';
 import '../../core/services/overlay_service.dart';
 import '../../core/widgets/flat_theme.dart';
 import '../../core/widgets/sprite_anim.dart';
+import '../collection/collection_screen.dart';
 import '../dashboard/services/focus_history_service.dart';
 import '../focus_session/focus_session_controller.dart';
 import '../home/home_screen.dart';
@@ -49,7 +50,11 @@ class AppShellState extends State<AppShell> {
         onOpenVillage: () => openTab(villageTab),
       ),
       const Center(child: Text('Sắp có', style: Flat.label)),
-      const Center(child: Text('Sắp có', style: Flat.label)),
+      ListenableBuilder(
+        listenable: history,
+        builder: (context, _) =>
+            CollectionScreen(player: widget.player, totalFocusSeconds: history.totalFocusSecondsAllTime),
+      ),
       SettingsScreen(screenTimeTracker: widget.tracker, overlayService: widget.overlay),
     ];
     return Scaffold(
