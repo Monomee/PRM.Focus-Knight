@@ -8,6 +8,7 @@ class FocusHistoryService extends ChangeNotifier {
   static FocusHistoryService get instance => _instance ??= FocusHistoryService();
 
   static const String _keyCompletedDates = 'fk_completed_dates';
+  static const String _keyShieldedDates = 'fk_shielded_dates';
   static const String _keyTotalFocusSecondsAllTime = 'fk_total_focus_seconds_all_time';
   static const String _prefixFocusSecDay = 'fk_focus_sec_';
 
@@ -17,6 +18,10 @@ class FocusHistoryService extends ChangeNotifier {
 
   List<String> _completedDates = [];
   List<String> get completedDates => List.unmodifiable(_completedDates);
+
+  /// Missed days covered by a streak-protection ticket (count as completed for streaks).
+  List<String> _shieldedDates = [];
+  List<String> get shieldedDates => List.unmodifiable(_shieldedDates);
 
   int _todayFocusSeconds = 0;
   int get todayFocusSeconds => _todayFocusSeconds;
@@ -41,6 +46,7 @@ class FocusHistoryService extends ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       _completedDates = prefs.getStringList(_keyCompletedDates) ?? [];
+      _shieldedDates = prefs.getStringList(_keyShieldedDates) ?? [];
       _totalFocusSecondsAllTime = prefs.getInt(_keyTotalFocusSecondsAllTime) ?? 0;
 
       final todayStr = formatDate(DateTime.now());
@@ -152,7 +158,7 @@ class FocusHistoryService extends ChangeNotifier {
     final yesterday = today.subtract(const Duration(days: 1));
     final yesterdayStr = formatDate(yesterday);
 
-    final completedSet = _completedDates.toSet();
+    final completedSet = {..._completedDates, ..._shieldedDates};
 
     if (completedSet.contains(todayStr)) {
       // Completed today: count backwards starting from today
@@ -176,6 +182,35 @@ class FocusHistoryService extends ChangeNotifier {
       // Broken streak
       return 0;
     }
+  }
+
+  /// Covers a single missed day (yesterday) with a ticket so the streak survives.
+  /// Only when today and yesterday are both missing, the day before counts, and
+  /// yesterday is on/after [protectFrom] (the day the granary was built).
+  Future<bool> tryShieldGap({
+    required DateTime now,
+    required DateTime? protectFrom,
+    required bool Function() consumeTicket,
+  }) async {
+    if (protectFrom == null) return false;
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dayBefore = today.subtract(const Duration(days: 2));
+    final done = {..._completedDates, ..._shieldedDates};
+    if (done.contains(formatDate(today)) || done.contains(formatDate(yesterday))) return false;
+    if (!done.contains(formatDate(dayBefore))) return false;
+    if (yesterday.isBefore(DateTime(protectFrom.year, protectFrom.month, protectFrom.day))) return false;
+    if (!consumeTicket()) return false;
+
+    // Assign after the await so a concurrent loadData() can't overwrite the new entry.
+    final updated = [..._shieldedDates, formatDate(yesterday)];
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_keyShieldedDates, updated);
+    } catch (_) {}
+    _shieldedDates = updated;
+    notifyListeners();
+    return true;
   }
 
   /// Helper to format seconds to "Xh Ym" or "Xm"

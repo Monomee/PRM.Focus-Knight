@@ -9,6 +9,7 @@ import '../focus_session/focus_session_controller.dart';
 import '../home/home_screen.dart';
 import '../settings/settings_screen.dart';
 import '../telemetry/screen_time_tracker.dart';
+import '../village/village_screen.dart';
 
 /// Flat 4-tab shell: Trang chủ · Làng · Bộ sưu tập · Cài đặt.
 class AppShell extends StatefulWidget {
@@ -49,7 +50,11 @@ class AppShellState extends State<AppShell> {
         history: history,
         onOpenVillage: () => openTab(villageTab),
       ),
-      const Center(child: Text('Sắp có', style: Flat.label)),
+      ListenableBuilder(
+        listenable: history,
+        builder: (context, _) =>
+            VillageScreen(player: widget.player, totalFocusSeconds: history.totalFocusSecondsAllTime),
+      ),
       ListenableBuilder(
         listenable: history,
         builder: (context, _) =>

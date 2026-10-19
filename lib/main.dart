@@ -5,6 +5,7 @@ import 'core/constants/blacklist_constants.dart';
 import 'core/services/foreground_task_service.dart';
 import 'core/services/overlay_service.dart';
 import 'features/shell/app_shell.dart';
+import 'features/dashboard/services/focus_history_service.dart';
 import 'features/focus_session/focus_session_controller.dart';
 import 'core/game/player_state.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
@@ -76,10 +77,25 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _player = PlayerState()..load();
+    _player = PlayerState();
+    _initProgress();
     _sessionController = FocusSessionController(player: _player);
     _screenTimeTracker = ScreenTimeTracker();
     _overlayService = OverlayService();
+  }
+
+  /// Weekly granary ticket, then use it to cover a missed day if needed.
+  Future<void> _initProgress() async {
+    await _player.load();
+    final history = FocusHistoryService.instance;
+    await history.loadData();
+    final now = DateTime.now();
+    await _player.grantWeeklyTicket(now);
+    await history.tryShieldGap(
+      now: now,
+      protectFrom: _player.granaryBuiltAt,
+      consumeTicket: _player.consumeTicket,
+    );
   }
 
   @override
