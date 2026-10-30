@@ -1,8 +1,37 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usage_stats/usage_stats.dart';
+
 import '../../core/constants/blacklist_constants.dart';
+
+class ForegroundUsageState {
+  ForegroundUsageState({
+    this.packageName,
+    this.isInteractive = true,
+    this.isKeyguardShown = false,
+  });
+
+  String? packageName;
+  bool isInteractive;
+  bool isKeyguardShown;
+
+  String? get activePackage =>
+      isInteractive && !isKeyguardShown ? packageName : null;
+
+  ForegroundUsageState copy() => ForegroundUsageState(
+    packageName: packageName,
+    isInteractive: isInteractive,
+    isKeyguardShown: isKeyguardShown,
+  );
+
+  void reset() {
+    packageName = null;
+    isInteractive = true;
+    isKeyguardShown = false;
+  }
+}
 
 /// Service monitoring screen-time for blacklisted entertainment/social apps using usage_stats
 class ScreenTimeTracker extends ChangeNotifier {
@@ -13,7 +42,8 @@ class ScreenTimeTracker extends ChangeNotifier {
   Duration get totalDistractionToday => _totalDistractionToday;
 
   final Map<String, Duration> _appDistractions = {};
-  Map<String, Duration> get appDistractions => Map.unmodifiable(_appDistractions);
+  Map<String, Duration> get appDistractions =>
+      Map.unmodifiable(_appDistractions);
 
   int _dailyLimitMinutes = 60;
   int get dailyLimitMinutes => _dailyLimitMinutes;
@@ -26,7 +56,8 @@ class ScreenTimeTracker extends ChangeNotifier {
 
   /// Whether distraction screen-time today has exceeded the daily global limit
   bool get isLimitExceeded =>
-      _dailyLimitMinutes > 0 && _totalDistractionToday.inMinutes >= _dailyLimitMinutes;
+      _dailyLimitMinutes > 0 &&
+      _totalDistractionToday.inMinutes >= _dailyLimitMinutes;
 
   /// Whether a specific app has exceeded its individual daily limit
   bool isAppLimitExceeded(String pkg) {
@@ -46,14 +77,19 @@ class ScreenTimeTracker extends ChangeNotifier {
 
   /// Progress ratio towards the daily global limit clamped between 0.0 and 1.0
   double get limitProgress => _dailyLimitMinutes > 0
-      ? (_totalDistractionToday.inSeconds / (_dailyLimitMinutes * 60)).clamp(0.0, 1.0)
+      ? (_totalDistractionToday.inSeconds / (_dailyLimitMinutes * 60)).clamp(
+          0.0,
+          1.0,
+        )
       : 0.0;
 
   /// Remaining duration before hitting the daily limit
   Duration get remainingTime {
     if (_dailyLimitMinutes <= 0) return Duration.zero;
     final limit = Duration(minutes: _dailyLimitMinutes);
-    return limit > _totalDistractionToday ? limit - _totalDistractionToday : Duration.zero;
+    return limit > _totalDistractionToday
+        ? limit - _totalDistractionToday
+        : Duration.zero;
   }
 
   Timer? _periodicTracker;
@@ -160,7 +196,10 @@ class ScreenTimeTracker extends ChangeNotifier {
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
-      final stats = await UsageStats.queryAndAggregateUsageStats(startOfDay, now);
+      final stats = await UsageStats.queryAndAggregateUsageStats(
+        startOfDay,
+        now,
+      );
 
       int totalMs = 0;
       _appDistractions.clear();
@@ -180,65 +219,159 @@ class ScreenTimeTracker extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Package of the most recent ACTIVITY_RESUMED event at or after [sinceMs].
-  static String? latestResumedPackage(List<EventUsageInfo> events, {required int sinceMs, String? ignorePackage}) {
-    String? pkg;
-    var best = -1;
-    for (final e in events) {
-      final resumed = e.eventTypeValue == 1 || e.eventType == '1' || e.eventTypeDescription == 'ACTIVITY_RESUMED';
-      final t = int.tryParse(e.timeStamp ?? '') ?? 0;
-      if (resumed && t >= sinceMs && t > best && e.packageName != ignorePackage) {
-        best = t;
-        pkg = e.packageName;
+  static const _leftSlack = Duration(seconds: 5);
+  static const _eventOverlap = Duration(seconds: 5);
+
+  final ForegroundUsageState _foreground = ForegroundUsageState();
+  final Map<String, int> _processedEvents = {};
+  DateTime? _leftAt;
+  int? _eventCursorMs;
+  Future<String?>? _foregroundPoll;
+  int _foregroundGeneration = 0;
+
+  static ForegroundUsageState reduceForegroundEvents(
+    ForegroundUsageState initial,
+    List<EventUsageInfo> events, {
+    int sinceMs = 0,
+  }) {
+    final state = initial.copy();
+    final ordered =
+        events.where((event) {
+          final timestamp = int.tryParse(event.timeStamp ?? '') ?? 0;
+          return timestamp >= sinceMs;
+        }).toList()..sort((a, b) {
+          final aTime = int.tryParse(a.timeStamp ?? '') ?? 0;
+          final bTime = int.tryParse(b.timeStamp ?? '') ?? 0;
+          return aTime.compareTo(bTime);
+        });
+
+    for (final event in ordered) {
+      final type = event.eventTypeValue ?? int.tryParse(event.eventType ?? '');
+      final package = event.packageName;
+      switch (type) {
+        case 1:
+          state
+            ..packageName = package
+            ..isInteractive = true
+            ..isKeyguardShown = false;
+        case 2:
+          if (package == null || package == state.packageName) {
+            state.packageName = null;
+          }
+        case 15:
+          state.isInteractive = true;
+        case 16:
+          state
+            ..isInteractive = false
+            ..packageName = null;
+        case 17:
+          state
+            ..isKeyguardShown = true
+            ..packageName = null;
+        case 18:
+          state.isKeyguardShown = false;
       }
     }
-    return pkg;
+    return state;
   }
 
-  /// Queries recent usage events to detect if a blacklisted app is currently in the foreground
-  Future<String?> getActiveBlacklistedPackage() async {
+  static String eventIdentity(EventUsageInfo event) {
+    final type = event.eventTypeValue ?? int.tryParse(event.eventType ?? '');
+    return '${event.timeStamp}|$type|${event.packageName ?? ''}';
+  }
+
+  static List<EventUsageInfo> unseenForegroundEvents(
+    List<EventUsageInfo> events,
+    Set<String> processed,
+  ) {
+    final unseen = <EventUsageInfo>[];
+    for (final event in events) {
+      if (processed.add(eventIdentity(event))) unseen.add(event);
+    }
+    return unseen;
+  }
+
+  void markLeftApp() {
+    _leftAt = DateTime.now();
+    _eventCursorMs = null;
+    _processedEvents.clear();
+    _foreground.reset();
+    _foregroundGeneration++;
+    _foregroundPoll = null;
+  }
+
+  Future<String?> _pollForeground({required DateTime earliest}) {
+    final active = _foregroundPoll;
+    if (active != null) return active;
+    final generation = _foregroundGeneration;
+    final poll = _performForegroundPoll(
+      earliest: earliest,
+      generation: generation,
+    );
+    _foregroundPoll = poll;
+    poll.whenComplete(() {
+      if (identical(_foregroundPoll, poll)) _foregroundPoll = null;
+    });
+    return poll;
+  }
+
+  Future<String?> _performForegroundPoll({
+    required DateTime earliest,
+    required int generation,
+  }) async {
     if (!_hasPermission) return null;
     try {
       final now = DateTime.now();
-      final events = await UsageStats.queryEvents(now.subtract(const Duration(seconds: 12)), now);
-      final latestPackage = latestResumedPackage(events, sinceMs: 0);
-      if (latestPackage != null && BlacklistConstants.defaultBlacklist.contains(latestPackage)) {
-        return latestPackage;
+      final cursor = _eventCursorMs;
+      final startMs = cursor == null
+          ? earliest.millisecondsSinceEpoch
+          : cursor - _eventOverlap.inMilliseconds;
+      final events = await UsageStats.queryEvents(
+        DateTime.fromMillisecondsSinceEpoch(startMs),
+        now,
+      );
+      if (generation != _foregroundGeneration) {
+        return _foreground.activePackage;
       }
+      final unseen = unseenForegroundEvents(
+        events,
+        _processedEvents.keys.toSet(),
+      );
+      for (final event in unseen) {
+        _processedEvents[eventIdentity(event)] =
+            int.tryParse(event.timeStamp ?? '') ?? 0;
+      }
+      final next = reduceForegroundEvents(
+        _foreground,
+        unseen,
+        sinceMs: startMs,
+      );
+      _foreground
+        ..packageName = next.packageName
+        ..isInteractive = next.isInteractive
+        ..isKeyguardShown = next.isKeyguardShown;
+      _eventCursorMs = now.millisecondsSinceEpoch;
+      final retentionStart = startMs - _eventOverlap.inMilliseconds;
+      _processedEvents.removeWhere(
+        (_, timestamp) => timestamp < retentionStart,
+      );
     } catch (_) {}
-    return null;
+    return _foreground.activePackage;
   }
 
-  // ponytail: own applicationId hardcoded; read it from the platform if the id ever changes.
-  static const _selfPackage = 'com.example.test_dart';
-
-  /// The other app's RESUMED event lands before Flutter reports `paused`, so look back a bit.
-  static const _leftSlack = Duration(seconds: 5);
-
-  DateTime? _leftAt;
-  String? _foregroundSinceLeft;
-
-  /// Call when FocusKnight goes to the background.
-  void markLeftApp() {
-    _leftAt = DateTime.now();
-    _foregroundSinceLeft = null;
+  Future<String?> getActiveBlacklistedPackage() async {
+    final package = await _pollForeground(
+      earliest: DateTime.now().subtract(const Duration(seconds: 15)),
+    );
+    return BlacklistConstants.defaultBlacklist.contains(package)
+        ? package
+        : null;
   }
 
-  /// App the user switched to after leaving FocusKnight (null = none yet, e.g. screen locked).
-  /// Remembered between polls, so staying in one app longer than the query window still counts.
   Future<String?> foregroundSinceLeft() async {
     final leftAt = _leftAt;
-    if (!_hasPermission || leftAt == null) return null;
-    try {
-      final now = DateTime.now();
-      final windowStart = now.subtract(const Duration(seconds: 15));
-      final since = leftAt.subtract(_leftSlack);
-      final events = await UsageStats.queryEvents(since.isAfter(windowStart) ? since : windowStart, now);
-      final pkg =
-          latestResumedPackage(events, sinceMs: since.millisecondsSinceEpoch, ignorePackage: _selfPackage);
-      if (pkg != null) _foregroundSinceLeft = pkg;
-    } catch (_) {}
-    return _foregroundSinceLeft;
+    if (leftAt == null) return null;
+    return _pollForeground(earliest: leftAt.subtract(_leftSlack));
   }
 
   String formatDuration(Duration duration) {

@@ -1,13 +1,21 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../core/game/player_state.dart';
 import '../dashboard/services/focus_history_service.dart';
 
-/// Write-ahead journal for paying out a won battle. SharedPreferences has no transactions,
-/// so the whole payout is written first and each step is marked done; [resume] finishes
-/// a payout that was cut short (e.g. the app was killed) without applying anything twice.
 class Settlement {
   static const key = 'fk_pending_settlement';
+  static Future<void> _serial = Future.value();
+  static int _sequence = 0;
+
+  static Future<T> _locked<T>(Future<T> Function() action) {
+    final result = _serial.then((_) => action());
+    _serial = result.then<void>((_) {}, onError: (_, _) {});
+    return result;
+  }
 
   static Future<void> commit({
     required int coins,
@@ -15,34 +23,84 @@ class Settlement {
     required List<int> sessionSeconds,
     required PlayerState player,
     required FocusHistoryService history,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
-      key,
-      jsonEncode({'coins': coins, 'logs': logs, 'seconds': sessionSeconds, 'recorded': 0, 'deposited': false}),
-    );
-    await resume(player, history);
+  }) {
+    return _locked(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await _resume(prefs, player, history);
+      final queue = _readQueue(prefs.getString(key));
+      final id = '${DateTime.now().microsecondsSinceEpoch}-${_sequence++}';
+      queue.add({
+        'id': id,
+        'coins': coins,
+        'logs': logs,
+        'seconds': sessionSeconds,
+        'recorded': 0,
+        'deposited': false,
+      });
+      await _writeQueue(prefs, queue);
+      await _resume(prefs, player, history);
+    });
   }
 
-  static Future<void> resume(PlayerState player, FocusHistoryService history) async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(key);
-    if (raw == null) return;
-    final j = jsonDecode(raw) as Map<String, dynamic>;
-    final seconds = (j['seconds'] as List).cast<int>();
+  static Future<void> resume(PlayerState player, FocusHistoryService history) {
+    return _locked(() async {
+      final prefs = await SharedPreferences.getInstance();
+      await _resume(prefs, player, history);
+    });
+  }
 
-    for (var i = j['recorded'] as int; i < seconds.length; i++) {
-      await history.recordCompletedSession(seconds[i]);
-      j['recorded'] = i + 1;
-      await prefs.setString(key, jsonEncode(j));
+  static Future<void> _resume(
+    SharedPreferences prefs,
+    PlayerState player,
+    FocusHistoryService history,
+  ) async {
+    final queue = _readQueue(prefs.getString(key));
+    while (queue.isNotEmpty) {
+      final settlement = queue.first;
+      final id = settlement['id'] as String;
+      final seconds = (settlement['seconds'] as List).cast<int>();
+      for (var i = settlement['recorded'] as int; i < seconds.length; i++) {
+        await history.recordCompletedSession(
+          seconds[i],
+          settlementId: '$id:history:$i',
+        );
+        settlement['recorded'] = i + 1;
+        await _writeQueue(prefs, queue);
+      }
+      if (settlement['deposited'] != true) {
+        await player.deposit(
+          coins: settlement['coins'] as int,
+          logs: settlement['logs'] as int,
+          settlementId: '$id:deposit',
+        );
+        settlement['deposited'] = true;
+        await _writeQueue(prefs, queue);
+      }
+      queue.removeAt(0);
+      await _writeQueue(prefs, queue);
     }
-    // ponytail: a kill between a step and its marker repeats that one step; per-key atomic
-    // writes would need a real database.
-    if (j['deposited'] != true) {
-      await player.deposit(coins: j['coins'] as int, logs: j['logs'] as int);
-      j['deposited'] = true;
-      await prefs.setString(key, jsonEncode(j));
+  }
+
+  static List<Map<String, dynamic>> _readQueue(String? raw) {
+    if (raw == null) return [];
+    final decoded = jsonDecode(raw);
+    if (decoded is List) {
+      return decoded
+          .map((item) => Map<String, dynamic>.from(item as Map))
+          .toList();
     }
-    await prefs.remove(key);
+    final legacy = Map<String, dynamic>.from(decoded as Map);
+    legacy['id'] ??= 'legacy';
+    return [legacy];
+  }
+
+  static Future<void> _writeQueue(
+    SharedPreferences prefs,
+    List<Map<String, dynamic>> queue,
+  ) async {
+    final saved = queue.isEmpty
+        ? await prefs.remove(key)
+        : await prefs.setString(key, jsonEncode(queue));
+    if (!saved) throw StateError('Failed to save settlement queue');
   }
 }

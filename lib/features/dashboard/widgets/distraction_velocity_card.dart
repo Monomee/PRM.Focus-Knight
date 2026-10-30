@@ -1,15 +1,14 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
 import '../services/analytics_service.dart';
 
 /// Card displaying Distraction Velocity (Tần suất bồn chồn)
 class DistractionVelocityCard extends StatelessWidget {
   final DistractionVelocityData data;
 
-  const DistractionVelocityCard({
-    super.key,
-    required this.data,
-  });
+  const DistractionVelocityCard({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -26,9 +25,12 @@ class DistractionVelocityCard extends StatelessWidget {
         levelIcon = Icons.change_circle_outlined;
         break;
       case 'DEEP_FLOW':
-      default:
         levelColor = const Color(0xFF10B981);
         levelIcon = Icons.self_improvement;
+        break;
+      default:
+        levelColor = const Color(0xFF94A3B8);
+        levelIcon = Icons.hourglass_empty;
         break;
     }
 
@@ -51,7 +53,11 @@ class DistractionVelocityCard extends StatelessWidget {
                   color: const Color(0xFF0284C7).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.speed, size: 16, color: Color(0xFF38BDF8)),
+                child: const Icon(
+                  Icons.speed,
+                  size: 16,
+                  color: Color(0xFF38BDF8),
+                ),
               ),
               const SizedBox(width: 8),
               const Expanded(
@@ -85,7 +91,7 @@ class DistractionVelocityCard extends StatelessWidget {
             children: [
               // Huge Number
               Text(
-                '${data.velocityPerHour}',
+                data.velocityPerHour?.toString() ?? '—',
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w900,
@@ -112,7 +118,10 @@ class DistractionVelocityCard extends StatelessWidget {
                       '${data.totalInterruptions} lần thoát / ${data.focusWorkHours}h tập trung',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF94A3B8),
+                      ),
                     ),
                   ],
                 ),
@@ -166,12 +175,19 @@ class DistractionVelocityCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: List.generate(data.weeklyTrend.length, (idx) {
-                final v = data.weeklyTrend[idx];
-                final barH = math.max(6.0, math.min(42.0, (v / 4.5) * 42.0));
+                final value = data.weeklyTrend[idx];
+                final v = value ?? 0;
+                final barH = value == null
+                    ? 6.0
+                    : math.max(6.0, math.min(42.0, (v / 4.5) * 42.0));
                 final isLast = idx == data.weeklyTrend.length - 1;
-                final col = v <= 2.0
+                final col = value == null
+                    ? const Color(0xFF475569)
+                    : v <= 2.0
                     ? const Color(0xFF10B981)
-                    : (v <= 4.0 ? const Color(0xFFF59E0B) : const Color(0xFFEF4444));
+                    : (v <= 4.0
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFFEF4444));
 
                 return Column(
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -182,11 +198,13 @@ class DistractionVelocityCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: col,
                         borderRadius: BorderRadius.circular(4),
-                        border: isLast ? Border.all(color: Colors.white, width: 1.2) : null,
+                        border: isLast
+                            ? Border.all(color: Colors.white, width: 1.2)
+                            : null,
                       ),
                       child: Center(
                         child: Text(
-                          '$v',
+                          value?.toString() ?? '—',
                           style: const TextStyle(
                             fontSize: 9,
                             fontWeight: FontWeight.bold,

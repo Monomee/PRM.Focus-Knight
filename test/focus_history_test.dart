@@ -16,8 +16,12 @@ void main() {
     test('Lỗ hổng A: Streak does not reset to 0 at start of new day if yesterday was completed', () async {
       final now = DateTime.now();
       final todayStr = FocusHistoryService.formatDate(now);
-      final yesterdayStr = FocusHistoryService.formatDate(now.subtract(const Duration(days: 1)));
-      final twoDaysAgoStr = FocusHistoryService.formatDate(now.subtract(const Duration(days: 2)));
+      final yesterdayStr = FocusHistoryService.formatDate(
+        now.subtract(const Duration(days: 1)),
+      );
+      final twoDaysAgoStr = FocusHistoryService.formatDate(
+        now.subtract(const Duration(days: 2)),
+      );
 
       // Scenario 1: Only yesterday was completed (User opened app at 00:01 AM today)
       SharedPreferences.setMockInitialValues({
@@ -26,8 +30,11 @@ void main() {
       await service.loadData();
 
       expect(service.completedDates.contains(todayStr), isFalse);
-      expect(service.calculateStreak(), 2,
-          reason: 'Streak must NOT reset to 0 at 00:01 AM if yesterday was completed!');
+      expect(
+        service.calculateStreak(),
+        2,
+        reason: 'Streak must NOT reset to 0 at 00:01 AM if yesterday was completed!',
+      );
 
       // Scenario 2: Today is now completed
       await service.recordCompletedSession(1500);
@@ -39,8 +46,11 @@ void main() {
         'fk_completed_dates': [twoDaysAgoStr],
       });
       await service.loadData();
-      expect(service.calculateStreak(), 0,
-          reason: 'Streak must be 0 if neither today nor yesterday was completed');
+      expect(
+        service.calculateStreak(),
+        0,
+        reason: 'Streak must be 0 if neither today nor yesterday was completed',
+      );
     });
 
     test('All-time and today focus accumulation', () async {
@@ -52,13 +62,38 @@ void main() {
       expect(service.totalFocusHoursAllTime, 1);
       expect(service.formatSeconds(service.todayFocusSeconds), '1h 0m');
     });
-  
+
     test('Session count per day', () async {
       final today = DateTime.now();
       expect(await service.getSessionCountForDate(today), 0);
       await service.recordCompletedSession(1500);
       await service.recordCompletedSession(1500);
       expect(await service.getSessionCountForDate(today), 2);
+    });
+
+    test('resets cached today focus after midnight', () async {
+      var now = DateTime(2026, 10, 30, 23, 59);
+      SharedPreferences.setMockInitialValues({
+        'fk_focus_sec_2026-10-30': 3600,
+        'fk_total_focus_seconds_all_time': 3600,
+      });
+      final midnightService = FocusHistoryService(clock: () => now);
+      await midnightService.loadData();
+      expect(midnightService.todayFocusSeconds, 3600);
+
+      now = DateTime(2026, 10, 31, 0, 1);
+      await midnightService.recordCompletedSession(1500);
+
+      expect(midnightService.todayFocusSeconds, 1500);
+      expect(
+        await midnightService.getFocusSecondsForDate(DateTime(2026, 10, 30)),
+        3600,
+      );
+      expect(
+        await midnightService.getFocusSecondsForDate(DateTime(2026, 10, 31)),
+        1500,
+      );
+      expect(midnightService.totalFocusSecondsAllTime, 5100);
     });
   });
 }

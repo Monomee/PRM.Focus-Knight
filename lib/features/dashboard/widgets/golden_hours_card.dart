@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
+
 import '../services/analytics_service.dart';
 
 /// Card displaying Golden Hours (Khung giờ vàng) and productivity recommendations
 class GoldenHoursCard extends StatelessWidget {
   final GoldenHoursData data;
 
-  const GoldenHoursCard({
-    super.key,
-    required this.data,
-  });
+  const GoldenHoursCard({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +29,11 @@ class GoldenHoursCard extends StatelessWidget {
                   color: const Color(0xFFEAB308).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.wb_sunny_rounded, size: 16, color: Color(0xFFFACC15)),
+                child: const Icon(
+                  Icons.wb_sunny_rounded,
+                  size: 16,
+                  color: Color(0xFFFACC15),
+                ),
               ),
               const SizedBox(width: 8),
               const Expanded(
@@ -79,7 +81,10 @@ class GoldenHoursCard extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: const Color(0xFFFFB300).withValues(alpha: 0.2),
                     shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFFFB300), width: 1.5),
+                    border: Border.all(
+                      color: const Color(0xFFFFB300),
+                      width: 1.5,
+                    ),
                   ),
                   child: const Center(
                     child: Text('👑', style: TextStyle(fontSize: 20)),
@@ -101,7 +106,9 @@ class GoldenHoursCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        data.peakTimeSlot,
+                        data.peakTimeSlot.isEmpty
+                            ? 'CHƯA ĐỦ DỮ LIỆU'
+                            : data.peakTimeSlot,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
@@ -114,14 +121,19 @@ class GoldenHoursCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: const Color(0xFF10B981).withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: const Color(0xFF10B981)),
                   ),
                   child: Text(
-                    '${(data.peakEfficiency * 100).toInt()}% HIỆU SUẤT',
+                    data.peakTimeSlot.isEmpty
+                        ? 'CHƯA CÓ DỮ LIỆU'
+                        : '${(data.peakEfficiency * 100).toInt()}% TƯƠNG ĐỐI',
                     style: const TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -161,8 +173,12 @@ class GoldenHoursCard extends StatelessWidget {
                       entry.key,
                       style: TextStyle(
                         fontSize: 10,
-                        fontWeight: isPeak ? FontWeight.bold : FontWeight.normal,
-                        color: isPeak ? const Color(0xFFFFB300) : const Color(0xFFCBD5E1),
+                        fontWeight: isPeak
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isPeak
+                            ? const Color(0xFFFFB300)
+                            : const Color(0xFFCBD5E1),
                       ),
                     ),
                   ),
@@ -173,7 +189,9 @@ class GoldenHoursCard extends StatelessWidget {
                         value: entry.value,
                         backgroundColor: const Color(0xFF1E2333),
                         valueColor: AlwaysStoppedAnimation<Color>(
-                          isPeak ? const Color(0xFFFFB300) : const Color(0xFF3B82F6),
+                          isPeak
+                              ? const Color(0xFFFFB300)
+                              : const Color(0xFF3B82F6),
                         ),
                         minHeight: 8,
                       ),
@@ -188,8 +206,12 @@ class GoldenHoursCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 10,
                         fontFamily: 'monospace',
-                        fontWeight: isPeak ? FontWeight.bold : FontWeight.normal,
-                        color: isPeak ? const Color(0xFFFFB300) : const Color(0xFF94A3B8),
+                        fontWeight: isPeak
+                            ? FontWeight.bold
+                            : FontWeight.normal,
+                        color: isPeak
+                            ? const Color(0xFFFFB300)
+                            : const Color(0xFF94A3B8),
                       ),
                     ),
                   ),
@@ -211,12 +233,20 @@ class GoldenHoursCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.lightbulb_outline, size: 16, color: Color(0xFFFFB300)),
+                const Icon(
+                  Icons.lightbulb_outline,
+                  size: 16,
+                  color: Color(0xFFFFB300),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     data.recommendation,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFFCBD5E1), height: 1.35),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFFCBD5E1),
+                      height: 1.35,
+                    ),
                   ),
                 ),
               ],

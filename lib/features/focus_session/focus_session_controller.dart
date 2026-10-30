@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import '../../core/game/economy.dart';
 import '../../core/game/player_state.dart';
 import '../../core/game/progression.dart';
@@ -37,8 +39,8 @@ class BattleResult {
 /// battle escrow. Coin/Log and focus hours are only committed when the whole battle is won.
 class FocusSessionController extends ChangeNotifier {
   FocusSessionController({PlayerState? player, FocusHistoryService? history})
-      : player = player ?? PlayerState(),
-        _history = history ?? FocusHistoryService.instance;
+    : player = player ?? PlayerState(),
+      _history = history ?? FocusHistoryService.instance;
 
   final PlayerState player;
   final FocusHistoryService _history;
@@ -77,7 +79,8 @@ class FocusSessionController extends ChangeNotifier {
   int _pendingLogs = 0;
   int get pendingLogs => _pendingLogs;
   final List<int> _completedSessionSeconds = [];
-  int get pendingFocusSeconds => _completedSessionSeconds.fold(0, (a, b) => a + b);
+  int get pendingFocusSeconds =>
+      _completedSessionSeconds.fold(0, (a, b) => a + b);
   ({int coins, int logs})? _lastSessionReward;
   ({int coins, int logs})? get lastSessionReward => _lastSessionReward;
   BattleResult? _lastResult;
@@ -99,15 +102,18 @@ class FocusSessionController extends ChangeNotifier {
   bool get inBattle => !isSetup;
 
   /// Goblin house HP: drains linearly with the focus countdown.
-  double get houseHpRatio =>
-      isFocusing && _totalFocusSeconds > 0 ? (_remainingSeconds / _totalFocusSeconds).clamp(0.0, 1.0) : 0.0;
+  double get houseHpRatio => isFocusing && _totalFocusSeconds > 0
+      ? (_remainingSeconds / _totalFocusSeconds).clamp(0.0, 1.0)
+      : 0.0;
 
   double get progressRatio {
     if (_phase == SessionPhase.focus && _totalFocusSeconds > 0) {
-      return ((_totalFocusSeconds - _remainingSeconds) / _totalFocusSeconds).clamp(0.0, 1.0);
+      return ((_totalFocusSeconds - _remainingSeconds) / _totalFocusSeconds)
+          .clamp(0.0, 1.0);
     } else if (_phase == SessionPhase.rest) {
       final total = _isLongRest ? _longRestSeconds : _totalRestSeconds;
-      if (total > 0) return ((total - _remainingSeconds) / total).clamp(0.0, 1.0);
+      if (total > 0)
+        return ((total - _remainingSeconds) / total).clamp(0.0, 1.0);
     }
     return 0.0;
   }
@@ -118,7 +124,8 @@ class FocusSessionController extends ChangeNotifier {
   static String _format(int s) =>
       '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 
-  String get _sessionLabel => _totalSessions > 1 ? ' (Phiên $_currentSession/$_totalSessions)' : '';
+  String get _sessionLabel =>
+      _totalSessions > 1 ? ' (Phiên $_currentSession/$_totalSessions)' : '';
 
   /// Start a new battle (one or more focus sessions)
   void startFocusSession({
@@ -159,8 +166,10 @@ class FocusSessionController extends ChangeNotifier {
       taskName: '$_taskName$_sessionLabel',
       remainingTime: _minutesLeft,
     );
-    AlertNotifier.show('⚔ Bắt đầu phiên $_currentSession/$_totalSessions',
-        '$_taskName · ${_totalFocusSeconds ~/ 60} phút');
+    AlertNotifier.show(
+      '⚔ Bắt đầu phiên $_currentSession/$_totalSessions',
+      '$_taskName · ${_totalFocusSeconds ~/ 60} phút',
+    );
     _startTicker();
   }
 
@@ -169,7 +178,10 @@ class FocusSessionController extends ChangeNotifier {
 
   void _startTicker() {
     _countdownTimer?.cancel();
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+    _countdownTimer = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) => _tick(),
+    );
   }
 
   void _tick() {
@@ -201,7 +213,8 @@ class FocusSessionController extends ChangeNotifier {
     }
   }
 
-  String get _restLabel => '${_isLongRest ? 'Nghỉ dài' : 'Nghỉ giải lao'} (Xong phiên $_currentSession/$_totalSessions)';
+  String get _restLabel =>
+      '${_isLongRest ? 'Nghỉ dài' : 'Nghỉ giải lao'} (Xong phiên $_currentSession/$_totalSessions)';
 
   @visibleForTesting
   void debugCompleteFocus() => _onFocusCompleted();
@@ -223,15 +236,21 @@ class FocusSessionController extends ChangeNotifier {
     _completedSessionSeconds.add(_totalFocusSeconds);
 
     if (_currentSession < _totalSessions) {
-      _isLongRest = _longBreakEvery > 0 && _currentSession % _longBreakEvery == 0;
+      _isLongRest =
+          _longBreakEvery > 0 && _currentSession % _longBreakEvery == 0;
       final rest = _isLongRest ? _longRestSeconds : _totalRestSeconds;
-      AlertNotifier.show('🎉 Xong phiên $_currentSession/$_totalSessions',
-          '+${reward.coins} coin vào quỹ trận · nghỉ ${rest >= 60 ? "${rest ~/ 60} phút" : "$rest giây"}');
+      AlertNotifier.show(
+        '🎉 Xong phiên $_currentSession/$_totalSessions',
+        '+${reward.coins} coin vào quỹ trận · nghỉ ${rest >= 60 ? "${rest ~/ 60} phút" : "$rest giây"}',
+      );
       _phase = SessionPhase.rest;
       _isPaused = false;
       _remainingSeconds = rest;
       notifyListeners();
-      ForegroundTaskService.startSessionNotification(taskName: _restLabel, remainingTime: _minutesLeft);
+      ForegroundTaskService.startSessionNotification(
+        taskName: _restLabel,
+        remainingTime: _minutesLeft,
+      );
       _startTicker();
     } else {
       HapticFeedback.heavyImpact();
@@ -249,22 +268,38 @@ class FocusSessionController extends ChangeNotifier {
       sessions: seconds.length,
     );
     final coins = _pendingCoins, logs = _pendingLogs;
-    final newRank = rankUp(_history.totalFocusSecondsAllTime, pendingFocusSeconds);
+    final newRank = rankUp(
+      _history.totalFocusSecondsAllTime,
+      pendingFocusSeconds,
+    );
     _resetToSetup();
     AlertNotifier.show('🏆 Hoàn thành trận!', '+$coins coin · +$logs log');
     if (newRank != null) {
-      AlertNotifier.show('🏅 Lên hạng ${newRank.label}!',
-          'Mở khóa ${GameCharacter.values[newRank.index].label} và huy hiệu ${newRank.label}.',
-          id: AlertNotifier.rank);
+      AlertNotifier.show(
+        '🏅 Lên hạng ${newRank.label}!',
+        'Mở khóa ${GameCharacter.values[newRank.index].label} và huy hiệu ${newRank.label}.',
+        id: AlertNotifier.rank,
+      );
     }
-    Settlement.commit(coins: coins, logs: logs, sessionSeconds: seconds, player: player, history: _history);
+    unawaited(
+      Settlement.commit(
+        coins: coins,
+        logs: logs,
+        sessionSeconds: seconds,
+        player: player,
+        history: _history,
+      ).catchError((Object error, StackTrace stackTrace) {}),
+    );
   }
 
   void _defeat() {
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.heavyImpact();
-    AlertNotifier.show('💀 Thất bại', 'Mất toàn bộ phần thưởng và giờ của trận.');
+    AlertNotifier.show(
+      '💀 Thất bại',
+      'Mất toàn bộ phần thưởng và giờ của trận.',
+    );
     _history.recordInterruption();
     _lastResult = BattleResult(
       won: false,
