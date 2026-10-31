@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/game/player_state.dart';
 import '../dashboard/services/focus_history_service.dart';
+import '../../core/services/persistent_preferences.dart';
 
 class Settlement {
   static const key = 'fk_pending_settlement';
@@ -23,20 +24,24 @@ class Settlement {
     required List<int> sessionSeconds,
     required PlayerState player,
     required FocusHistoryService history,
+    String? settlementId,
   }) {
     return _locked(() async {
-      final prefs = await SharedPreferences.getInstance();
-      await _resume(prefs, player, history);
+      final prefs = await loadPersistentPreferences();
       final queue = _readQueue(prefs.getString(key));
-      final id = '${DateTime.now().microsecondsSinceEpoch}-${_sequence++}';
-      queue.add({
-        'id': id,
-        'coins': coins,
-        'logs': logs,
-        'seconds': sessionSeconds,
-        'recorded': 0,
-        'deposited': false,
-      });
+      final id =
+          settlementId ??
+          '${DateTime.now().microsecondsSinceEpoch}-${_sequence++}';
+      if (!queue.any((entry) => entry['id'] == id)) {
+        queue.add({
+          'id': id,
+          'coins': coins,
+          'logs': logs,
+          'seconds': sessionSeconds,
+          'recorded': 0,
+          'deposited': false,
+        });
+      }
       await _writeQueue(prefs, queue);
       await _resume(prefs, player, history);
     });
@@ -44,7 +49,7 @@ class Settlement {
 
   static Future<void> resume(PlayerState player, FocusHistoryService history) {
     return _locked(() async {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       await _resume(prefs, player, history);
     });
   }
@@ -98,9 +103,14 @@ class Settlement {
     SharedPreferences prefs,
     List<Map<String, dynamic>> queue,
   ) async {
-    final saved = queue.isEmpty
-        ? await prefs.remove(key)
-        : await prefs.setString(key, jsonEncode(queue));
-    if (!saved) throw StateError('Failed to save settlement queue');
+    try {
+      final saved = queue.isEmpty
+          ? await prefs.remove(key)
+          : await prefs.setString(key, jsonEncode(queue));
+      if (!saved) throw StateError('Failed to save settlement queue');
+    } catch (_) {
+      invalidatePreferenceCache();
+      rethrow;
+    }
   }
 }

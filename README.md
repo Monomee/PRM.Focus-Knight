@@ -97,4 +97,4 @@ flutter test
 - [Cấu trúc dự án](STRUCTURE.md): thư mục, vai trò các module và luồng xử lý chính.
 - [Review kỹ thuật](PROJECT_REVIEW.md): các vấn đề đã phát hiện và thứ tự ưu tiên cải thiện.
 
-README mô tả tính năng theo mã hiện tại. Phần phân tích hiện còn sử dụng dữ liệu mẫu khi thiếu dữ liệu thật; các giới hạn về thống kê, lưu dữ liệu và chống xao nhãng được ghi trong bản review. Việc tắt tiến trình hoặc vuốt đóng giữa trận được quy định là bỏ cuộc; không khôi phục trận đang chơi.
+README mô tả tính năng theo mã hiện tại. Phần phân tích hiển thị thiếu dữ liệu khi chưa có đủ lịch sử; các giới hạn về thống kê, lưu dữ liệu và chống xao nhãng được ghi trong bản review. Việc tắt tiến trình hoặc vuốt đóng giữa trận được quy định là bỏ cuộc; không khôi phục trận đang chơi.

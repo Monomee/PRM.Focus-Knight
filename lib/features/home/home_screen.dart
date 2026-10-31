@@ -170,17 +170,23 @@ class _HomeScreenState extends State<HomeScreen> {
         SizedBox(
           width: double.infinity,
           child: FilledButton(
-            onPressed: _start,
+            onPressed: widget.controller.isSettling ? null
+                : widget.controller.hasPendingSettlement ? widget.controller.retrySettlement : _start,
             style: FilledButton.styleFrom(
               backgroundColor: Flat.accent,
               foregroundColor: const Color(0xFF1A1200),
               padding: const EdgeInsets.symmetric(vertical: 13),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: Text(inBattle ? 'QUAY LẠI TRẬN' : 'BẮT ĐẦU',
+            child: Text(widget.controller.isSettling ? 'ĐANG LƯU PHẦN THƯỞNG'
+                : widget.controller.hasPendingSettlement ? 'THỬ LẠI NHẬN THƯỞNG'
+                : inBattle ? 'QUAY LẠI TRẬN' : 'BẮT ĐẦU',
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
           ),
         ),
+        if (widget.controller.settlementFailed)
+          const Text('Chưa lưu được phần thưởng. Hãy thử lại trước khi đóng ứng dụng.',
+              textAlign: TextAlign.center, style: TextStyle(color: Flat.danger)),
       ]),
     );
   }

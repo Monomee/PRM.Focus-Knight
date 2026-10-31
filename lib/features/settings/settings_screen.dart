@@ -27,20 +27,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     text: '${widget.screenTimeTracker.dailyLimitMinutes}',
   );
   late final FocusNode _limitFocusNode = FocusNode();
-  late int _syncedDailyLimit = widget.screenTimeTracker.dailyLimitMinutes;
+  late int _syncedDailyLimit;
   bool _limitIsDirty = false;
   int _longRestMinutes = 15;
 
   @override
   void initState() {
     super.initState();
+    _syncedDailyLimit = widget.screenTimeTracker.dailyLimitMinutes;
     _limitTextController.addListener(_onLimitTextChanged);
     widget.screenTimeTracker.addListener(_onTrackerChanged);
     widget.overlayService.addListener(_onTrackerChanged);
     widget.screenTimeTracker.refreshUsageStats();
     SharedPreferences.getInstance().then((p) {
-      if (mounted)
+      if (mounted) {
         setState(() => _longRestMinutes = p.getInt(kLongRestMinutesKey) ?? 15);
+      }
     });
   }
 

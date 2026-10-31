@@ -93,6 +93,11 @@ class ScreenTimeTracker extends ChangeNotifier {
   }
 
   Timer? _periodicTracker;
+  bool _disposed = false;
+  final Map<String, EventUsageInfo> _usageEvents = {};
+  DateTime? _usageDay;
+  int? _usageCursorMs;
+  Future<void>? _usageRefresh;
 
   ScreenTimeTracker() {
     init();
@@ -142,10 +147,15 @@ class ScreenTimeTracker extends ChangeNotifier {
   Future<bool> checkPermission() async {
     try {
       final granted = await UsageStats.checkUsagePermission() ?? false;
+      if (_disposed) return false;
+      if (granted && !_hasPermission) startPeriodicTracking();
+      if (!granted) stopPeriodicTracking();
       _hasPermission = granted;
       notifyListeners();
       return _hasPermission;
     } catch (_) {
+      if (_disposed) return false;
+      stopPeriodicTracking();
       _hasPermission = false;
       notifyListeners();
       return false;
@@ -190,33 +200,92 @@ class ScreenTimeTracker extends ChangeNotifier {
     _periodicTracker = null;
   }
 
-  Future<void> refreshUsageStats() async {
+  Future<void> refreshUsageStats() {
+    return _usageRefresh ??= _refreshUsageStats().whenComplete(() {
+      _usageRefresh = null;
+    });
+  }
+
+  Future<void> _refreshUsageStats() async {
     if (!_hasPermission) return;
 
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
-      final stats = await UsageStats.queryAndAggregateUsageStats(
-        startOfDay,
+      if (_usageDay != startOfDay) {
+        _usageDay = startOfDay;
+        _usageEvents.clear();
+        _usageCursorMs = null;
+        _appDistractions.clear();
+        _totalDistractionToday = Duration.zero;
+      }
+      final events = await UsageStats.queryEvents(
+        _usageCursorMs == null
+            ? startOfDay.subtract(const Duration(days: 1))
+            : DateTime.fromMillisecondsSinceEpoch(
+                _usageCursorMs! - _eventOverlap.inMilliseconds,
+              ),
         now,
       );
-
-      int totalMs = 0;
-      _appDistractions.clear();
-
-      for (final pkg in BlacklistConstants.defaultBlacklist) {
-        if (stats.containsKey(pkg)) {
-          final ms = stats[pkg]?.totalTimeInForegroundMs ?? 0;
-          if (ms > 0) {
-            _appDistractions[pkg] = Duration(milliseconds: ms);
-            totalMs += ms;
-          }
+      if (_disposed) return;
+      for (final event in events) {
+        final type =
+            event.eventTypeValue ?? int.tryParse(event.eventType ?? '');
+        if (const {1, 2, 15, 16, 17, 18}.contains(type)) {
+          _usageEvents[eventIdentity(event)] = event;
         }
       }
-
-      _totalDistractionToday = Duration(milliseconds: totalMs);
+      _usageCursorMs = now.millisecondsSinceEpoch;
+      final usage = usageDurations(
+        _usageEvents.values,
+        start: startOfDay,
+        end: now,
+      );
+      _appDistractions.clear();
+      _appDistractions.addAll(usage);
+      _totalDistractionToday = usage.values.fold(
+        Duration.zero,
+        (a, b) => a + b,
+      );
       notifyListeners();
     } catch (_) {}
+  }
+
+  /// UsageStats aggregates can omit the current visit until the app is paused.
+  static Map<String, Duration> usageDurations(
+    Iterable<EventUsageInfo> events, {
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final startMs = start.millisecondsSinceEpoch;
+    final endMs = end.millisecondsSinceEpoch;
+    final ordered =
+        events.where((e) {
+          final timestamp = int.tryParse(e.timeStamp ?? '');
+          return timestamp != null && timestamp <= endMs;
+        }).toList()..sort(
+          (a, b) => int.parse(a.timeStamp!).compareTo(int.parse(b.timeStamp!)),
+        );
+    var state = ForegroundUsageState();
+    var cursor = startMs;
+    final usage = <String, Duration>{};
+    void accumulate(int until) {
+      final time = until.clamp(startMs, endMs);
+      final pkg = state.activePackage;
+      if (time > cursor && BlacklistConstants.defaultBlacklist.contains(pkg)) {
+        usage[pkg!] =
+            (usage[pkg] ?? Duration.zero) +
+            Duration(milliseconds: time - cursor);
+      }
+      cursor = time;
+    }
+
+    for (final event in ordered) {
+      accumulate(int.parse(event.timeStamp!));
+      state = reduceForegroundEvents(state, [event]);
+    }
+    accumulate(endMs);
+    return usage;
   }
 
   static const _leftSlack = Duration(seconds: 5);
@@ -390,6 +459,7 @@ class ScreenTimeTracker extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _periodicTracker?.cancel();
     super.dispose();
   }

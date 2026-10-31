@@ -4,26 +4,27 @@ Ngày review ban đầu: 2026-10-28.
 
 Cập nhật gần nhất: 2026-10-31.
 
-Tài liệu này tổng hợp 13 vấn đề đã báo cáo trong phiên review và trạng thái xử lý hiện tại. Tám mục trong phần "Cần sửa" đã được khắc phục; các mục "Nên cải thiện" và "Có thể tinh gọn" vẫn là công việc còn lại.
+Tài liệu này tổng hợp 13 vấn đề đã báo cáo trong phiên review và trạng thái xử lý hiện tại. Sau phúc tra nhánh `camtu`, các lỗi còn lại ở mục 1, 5, 7 và 8 đã được sửa bổ sung. Các mục "Nên cải thiện" và "Có thể tinh gọn" vẫn là công việc còn lại.
 
 ## Phạm vi và kết quả kiểm tra
 
 FocusKnight là ứng dụng Pomodoro kết hợp game pixel: hoàn thành trận để nhận tài nguyên, nâng làng và mở nhân vật. Đánh giá kỹ thuật dựa trên mô hình hiện tại: dữ liệu lưu trên một điện thoại Android, không có máy chủ.
 
-Đã đọc toàn bộ 39 file Dart trong `lib/`, 22 file test, phần Android tùy chỉnh, công cụ tạo icon và tài liệu; rà soát thêm cấu hình các nền tảng còn lại.
+Đã đọc mã Dart trong `lib/`, các test, phần Android tùy chỉnh, công cụ tạo icon và tài liệu; rà soát thêm cấu hình các nền tảng còn lại.
 
 Kết quả tại thời điểm review ban đầu:
 
 - `flutter analyze --no-pub`: không phát hiện lỗi.
 - `flutter test --no-pub`: 99 test đạt.
 
-Kết quả sau khi khắc phục tám mục "Cần sửa":
+Kết quả sau đợt sửa bổ sung ngày 2026-10-31:
 
 - `flutter analyze --no-pub`: không phát hiện lỗi.
-- `flutter test --no-pub`: 111 test đạt.
+- `flutter test --no-pub`: 132 test đạt.
+- `flutter build apk --debug --no-pub`: đạt, cài và chạy trên Samsung SM-G781N, Android 13 qua USB.
 - `git diff --check`: đạt.
 
-Các phát hiện dưới đây dựa trên việc đọc mã và đối chiếu test hiện có. Chưa tái hiện từng lỗi trên thiết bị thật.
+Đã kiểm tra thêm trên thiết bị thật cho khóa màn hình, overlay khi thắng trận, cảnh báo vượt hạn khi YouTube mở liên tục và nạp hạn mức cài đặt. Chưa kiểm tra mọi tình huống trên mọi phiên bản Android/OEM. Báo cáo phúc tra trước khi sửa được giữ tại [camtu-verification](docs/reviews/2026-10-31-camtu-verification.md).
 
 Điểm tốt: luật game tách khỏi giao diện, tái sử dụng component hợp lý và có test cho nhiều luồng chính. Ưu tiên cải thiện độ tin cậy của dữ liệu, chống xao nhãng và thống kê.
 
@@ -40,6 +41,11 @@ Vị trí chính: [player_state.dart](lib/core/game/player_state.dart), [focus_h
 - Tiến độ settlement chỉ được cập nhật sau khi bước tương ứng lưu thành công; bản ghi chờ được giữ lại khi có lỗi.
 - Số dư trong bộ nhớ chỉ thay đổi sau khi trạng thái ví bền vững đã được ghi thành công.
 - Có hỗ trợ đọc bản ghi pending theo định dạng cũ.
+- Khoản thưởng mới được lưu vào journal trước khi xử lý khoản cũ đang lỗi. Retry dùng cùng ID, không tạo khoản thưởng thứ hai.
+- Xây làng và nhận thưởng dùng chung hàng đợi ghi ví; số dư, cấp công trình và ngày xây Kho lương được lưu cùng snapshot, không hoàn lại tiền đã chi sau khi nạp lại.
+- Getter thống kê đọc snapshot lịch sử đã ghi thành công, có fallback dữ liệu cũ; không phụ thuộc các khóa phụ chưa kịp đồng bộ khi tiến trình bị tắt.
+- Khi ghi thất bại, cache bị đánh dấu chưa tin cậy cho đến khi đọc phục hồi thành công, kể cả khi lần đọc phục hồi đầu tiên cũng lỗi.
+- Nếu lần ghi journal đầu tiên lỗi, controller giữ khoản thưởng, hiển thị nút thử lại ở kết quả/Trang chủ và ngăn bắt đầu trận mới làm mất khoản này.
 
 ### 2. Số phút hôm qua có thể bị cộng sang hôm nay
 
@@ -65,7 +71,7 @@ Vị trí chính: [analytics_service.dart](lib/features/dashboard/services/analy
 
 ### 4. Khóa màn hình sau khi mở app bị chặn vẫn có thể bị phạt
 
-Trạng thái: **Đã sửa ở mức mã nguồn và unit test; vẫn cần xác nhận trên thiết bị Android thật**.
+Trạng thái: **Đã sửa; ca khóa màn hình đã đạt trên Samsung Android 13**.
 
 Vị trí chính: [screen_time_tracker.dart](lib/features/telemetry/screen_time_tracker.dart), [main.dart](lib/main.dart).
 
@@ -76,7 +82,7 @@ Vị trí chính: [screen_time_tracker.dart](lib/features/telemetry/screen_time_
 
 ### 5. Cảnh báo hạn mức có thể bỏ lỡ lúc người dùng vượt hạn
 
-Trạng thái: **Đã sửa ở mức mã nguồn và unit test; vẫn cần xác nhận trên thiết bị Android thật**.
+Trạng thái: **Đã sửa; ca vượt hạn khi dùng liên tục đã đạt trên Samsung Android 13**.
 
 Vị trí chính: [screen_time_tracker.dart](lib/features/telemetry/screen_time_tracker.dart), [main.dart](lib/main.dart).
 
@@ -84,6 +90,10 @@ Vị trí chính: [screen_time_tracker.dart](lib/features/telemetry/screen_time_
 - Package chỉ bị xóa khi có sự kiện rời app, app khác được mở, tắt màn hình hoặc khóa máy.
 - Cảnh báo hạn mức vì vậy vẫn có thể kích hoạt khi người dùng mở app dưới hạn rồi tiếp tục dùng đến lúc vượt hạn.
 - Main ngăn các lượt kiểm tra async chạy chồng nhau.
+- Thời gian trong ngày được dựng từ UsageEvents, gồm cả khoảng app vẫn đang mở; dừng cộng khi pause, khóa máy hoặc tắt màn hình. Không còn chờ aggregate cập nhật sau khi rời app.
+- Query lấy dữ liệu trước đầu ngày để nhận biết phiên qua nửa đêm, nhưng chỉ cộng thời gian thuộc ngày hiện tại; polling có overlap và dedupe.
+- Bộ đếm tự bắt đầu khi quyền usage được cấp sau khởi động.
+- Ca USB: YouTube ban đầu 4m51s, hạn mức 6 phút; mở liên tục 90 giây, không có cảnh báo ở 45 giây, có thông báo vượt hạn ở 90 giây mà không mở lại app.
 
 ### 6. Overlay chưa được đóng khi thắng trận trong app bị chặn
 
@@ -104,6 +114,7 @@ Vị trí chính: [analytics_service.dart](lib/features/dashboard/services/analy
 - Khung `00h–05h` được tách riêng, không còn bị gộp vào nhãn `21h–24h`.
 - `peakTimeSlot` được lấy trực tiếp từ khung có tổng thời gian cao nhất nên các khung `11h–14h` và `21h–24h` không còn rơi về mặc định buổi sáng.
 - Khi không có dữ liệu, ứng dụng không tự chọn một khung giờ mặc định hoặc tạo lời khuyên.
+- Chọn khung từ tổng phút gốc trước khi làm tròn tỷ lệ, nên 599 phút không thắng khung 600 phút.
 
 ### 8. Ô nhập hạn mức bị ghi đè trong lúc đang sửa
 
@@ -115,6 +126,7 @@ Vị trí chính: [settings_screen.dart](lib/features/settings/settings_screen.d
 - Notification định kỳ từ tracker hoặc overlay không ghi đè khi người dùng đang focus hoặc có draft chưa lưu.
 - Nội dung chỉ được đồng bộ khi hạn mức cấu hình thực sự thay đổi và field đang sạch, không có focus.
 - Listener, controller và `FocusNode` được giải phóng đầy đủ.
+- Baseline đồng bộ được khởi tạo trước khi đăng ký listener; lần nạp đầu hiển thị đúng cấu hình 240 thay vì giữ mặc định 60.
 
 ## Nên cải thiện
 
@@ -143,8 +155,8 @@ Trạng thái: **Đã bổ sung phần lớn unit/widget test; còn thiếu ki�
 Vị trí: thư mục [test](test), đặc biệt [analytics_metrics_test.dart](test/analytics_metrics_test.dart), [focus_history_test.dart](test/focus_history_test.dart), [settlement_test.dart](test/settlement_test.dart), [foreground_detection_test.dart](test/foreground_detection_test.dart) và [settings_screen_test.dart](test/settings_screen_test.dart).
 
 - Đã thêm test hồi quy cho analytics không tạo dữ liệu mẫu, đổi ngày, lỗi và retry settlement, tính idempotent của trả thưởng, chuỗi sự kiện foreground/khóa màn hình và draft hạn mức.
-- Bộ test hiện có 111 test đạt.
-- Phần còn lại là kiểm thử tích hợp trên Android thật cho luồng cấp quyền → chạy nền → mở blacklist → khóa máy, vượt hạn sau khi app đã mở lâu và kết thúc trận khi overlay đang hiển thị.
+- Bộ test hiện có 132 test đạt, gồm lỗi ghi/đọc phục hồi, retry sau side effect, ghi đồng thời, UsageEvents khi app còn mở, khóa màn hình, đổi ngày và cấp quyền sau khởi động.
+- Đã chạy các ca khóa máy, vượt hạn khi app mở lâu và kết thúc trận khi overlay hiển thị trên Samsung Android 13. Còn cần kiểm tra luồng cấp quyền lần đầu trên thiết bị mới và các OEM/phiên bản khác.
 - Cần kiểm tra trên nhiều phiên bản Android/OEM vì thời điểm UsageStats phát sự kiện có thể khác nhau.
 
 ### 12. Cấu hình ký bản release vẫn dùng khóa debug
@@ -173,7 +185,7 @@ Khả năng tinh gọn: bỏ 1 dependency trực tiếp và file test placeholde
 
 Tám mục ưu tiên ban đầu đã được xử lý. Công việc còn lại nên theo thứ tự:
 
-1. Kiểm thử các luồng UsageStats, khóa màn hình, cảnh báo hạn mức và overlay trên Android thật.
+1. Mở rộng kiểm thử các luồng UsageStats, khóa màn hình, cảnh báo hạn mức và overlay sang Android/OEM khác và cấp quyền lần đầu.
 2. Sửa đồng hồ dựa trên thời gian thực đã trôi qua.
 3. Lưu thời điểm thực tế của từng phiên tập trung.
 4. Cấu hình khóa ký release trước khi phân phối.
@@ -190,6 +202,6 @@ Chưa có lý do từ mã hiện tại để thay toàn bộ cách quản lý st
 
 ## Giới hạn kiểm tra và rủi ro
 
-Chưa kiểm tra APK release, hành vi UsageStats/overlay trên điện thoại thật, pin/FPS, từng ảnh/font và từng dòng scaffold native của các nền tảng phụ.
+Chưa kiểm tra APK release, Android/OEM khác, pin/FPS, từng ảnh/font và từng dòng scaffold native của các nền tảng phụ.
 
-Các thay đổi đã vượt qua unit/widget test và static analysis, nhưng hành vi phát sự kiện UsageStats, khóa màn hình và overlay vẫn cần xác nhận trên thiết bị Android thật. SharedPreferences không phải cơ sở dữ liệu giao dịch; cơ chế settlement hiện giảm rủi ro bằng journal tuần tự và idempotency key, nhưng vẫn cần kiểm thử việc tiến trình bị dừng tại nhiều thời điểm trong luồng trả thưởng.
+Các thay đổi đã vượt qua unit/widget test, static analysis và các ca USB nêu trên; không suy rộng một Samsung Android 13 thành mọi thiết bị. SharedPreferences không phải cơ sở dữ liệu giao dịch; cần mở rộng kiểm thử kill tiến trình tại các bước ghi thực tế. Nếu bộ nhớ không thể ghi ngay journal đầu tiên, phần thưởng được giữ trong tiến trình và UI yêu cầu thử lại trước khi đóng ứng dụng; không thể bảo đảm dữ liệu bền vững khi thiết bị hoàn toàn không ghi được.

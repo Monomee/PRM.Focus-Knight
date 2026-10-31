@@ -284,9 +284,11 @@ class AnalyticsService extends ChangeNotifier {
 
     String bestBlock = '';
     double highestRate = 0.0;
-    normalizedBlocks.forEach((block, rate) {
-      if (rate > highestRate) {
-        highestRate = rate;
+    int bestMinutes = 0;
+    blockMinutes.forEach((block, minutes) {
+      if (minutes > bestMinutes) {
+        bestMinutes = minutes;
+        highestRate = normalizedBlocks[block]!;
         bestBlock = block;
       }
     });

@@ -85,6 +85,13 @@ class FocusSessionController extends ChangeNotifier {
   ({int coins, int logs})? get lastSessionReward => _lastSessionReward;
   BattleResult? _lastResult;
   BattleResult? get lastResult => _lastResult;
+  ({String id, int coins, int logs, List<int> seconds})? _unsettledVictory;
+  bool get hasPendingSettlement => _unsettledVictory != null;
+  bool _settling = false;
+  bool get isSettling => _settling;
+  bool _settlementFailed = false;
+  bool get settlementFailed => _settlementFailed;
+  bool _disposed = false;
 
   // Pause state
   bool _isPaused = false;
@@ -112,8 +119,9 @@ class FocusSessionController extends ChangeNotifier {
           .clamp(0.0, 1.0);
     } else if (_phase == SessionPhase.rest) {
       final total = _isLongRest ? _longRestSeconds : _totalRestSeconds;
-      if (total > 0)
+      if (total > 0) {
         return ((total - _remainingSeconds) / total).clamp(0.0, 1.0);
+      }
     }
     return 0.0;
   }
@@ -136,7 +144,7 @@ class FocusSessionController extends ChangeNotifier {
     int longBreakEvery = 0,
     int longRestSeconds = 900,
   }) {
-    if (inBattle) return; // never wipe a running battle's escrow
+    if (inBattle || hasPendingSettlement) return;
     _countdownTimer?.cancel();
     _taskName = task.trim().isEmpty ? 'Deep Work' : task.trim();
     _totalSessions = totalSessions > 0 ? totalSessions : 1;
@@ -268,6 +276,12 @@ class FocusSessionController extends ChangeNotifier {
       sessions: seconds.length,
     );
     final coins = _pendingCoins, logs = _pendingLogs;
+    _unsettledVictory = (
+      id: 'battle-${DateTime.now().microsecondsSinceEpoch}',
+      coins: coins,
+      logs: logs,
+      seconds: seconds,
+    );
     final newRank = rankUp(
       _history.totalFocusSecondsAllTime,
       pendingFocusSeconds,
@@ -281,15 +295,31 @@ class FocusSessionController extends ChangeNotifier {
         id: AlertNotifier.rank,
       );
     }
-    unawaited(
-      Settlement.commit(
-        coins: coins,
-        logs: logs,
-        sessionSeconds: seconds,
+    unawaited(retrySettlement());
+  }
+
+  Future<void> retrySettlement() async {
+    final payout = _unsettledVictory;
+    if (payout == null || _settling) return;
+    _settling = true;
+    _settlementFailed = false;
+    notifyListeners();
+    try {
+      await Settlement.commit(
+        settlementId: payout.id,
+        coins: payout.coins,
+        logs: payout.logs,
+        sessionSeconds: payout.seconds,
         player: player,
         history: _history,
-      ).catchError((Object error, StackTrace stackTrace) {}),
-    );
+      );
+      _unsettledVictory = null;
+    } catch (_) {
+      _settlementFailed = true;
+    } finally {
+      _settling = false;
+      if (!_disposed) notifyListeners();
+    }
   }
 
   void _defeat() {
@@ -405,6 +435,7 @@ class FocusSessionController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     super.dispose();

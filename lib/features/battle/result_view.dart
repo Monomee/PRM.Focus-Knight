@@ -6,10 +6,13 @@ import 'camp_view.dart';
 
 /// End-of-battle summary: victory pays out, defeat forfeits everything.
 class ResultView extends StatelessWidget {
-  const ResultView({super.key, required this.result, required this.onDone});
+  const ResultView({super.key, required this.result, required this.onDone,
+    this.onRetry, this.isSaving = false});
 
   final BattleResult result;
   final VoidCallback onDone;
+  final VoidCallback? onRetry;
+  final bool isSaving;
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +46,12 @@ class ResultView extends StatelessWidget {
               Text('${result.sessions} phiên · ${result.focusSeconds ~/ 60} phút tập trung', style: woodText(14)),
             ],
             const Spacer(),
+            if (isSaving) Text('Đang lưu phần thưởng…', style: woodText(14)),
+            if (onRetry != null) ...[
+              Text('Chưa lưu được phần thưởng. Hãy thử lại trước khi đóng ứng dụng.',
+                  textAlign: TextAlign.center, style: woodText(14)),
+              TextButton(onPressed: onRetry, child: const Text('Thử lại nhận thưởng')),
+            ],
             SizedBox(
               width: double.infinity,
               child: FilledButton(

@@ -1,7 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../../core/services/persistent_preferences.dart';
 
 /// Lightweight service managing user focus history, dot-grid calendar dates, and streak calculation.
 /// Uses SharedPreferences with simple string list and integer keys for O(1) performance without bulky JSON.
@@ -51,7 +52,7 @@ class FocusHistoryService extends ChangeNotifier {
 
   Future<void> loadData() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       final stateRaw = prefs.getString(_keySettlementState);
       final state = stateRaw == null
           ? null
@@ -84,7 +85,7 @@ class FocusHistoryService extends ChangeNotifier {
     int durationSeconds, {
     String? settlementId,
   }) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await loadPersistentPreferences();
     final now = _clock();
     final todayStr = formatDate(now);
     final raw = prefs.getString(_keySettlementState);
@@ -124,17 +125,22 @@ class FocusHistoryService extends ChangeNotifier {
     hours[hour] = hourSeconds;
     counts[todayStr] = sessionCount;
     if (settlementId != null) applied.add(settlementId);
-    if (!await prefs.setString(
-      _keySettlementState,
-      jsonEncode({
-        'applied': applied,
-        'total': total,
-        'days': days,
-        'hours': hours,
-        'counts': counts,
-      }),
-    )) {
-      throw StateError('Failed to save completed session');
+    try {
+      if (!await prefs.setString(
+        _keySettlementState,
+        jsonEncode({
+          'applied': applied,
+          'total': total,
+          'days': days,
+          'hours': hours,
+          'counts': counts,
+        }),
+      )) {
+        throw StateError('Failed to save completed session');
+      }
+    } catch (_) {
+      invalidatePreferenceCache();
+      rethrow;
     }
     final completedDates = _completedDates.contains(todayStr)
         ? _completedDates
@@ -155,7 +161,7 @@ class FocusHistoryService extends ChangeNotifier {
   /// Records an interruption or app exit during active focus session
   Future<void> recordInterruption() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       final todayStr = formatDate(DateTime.now());
       final key = '$_prefixInterruptionDay$todayStr';
       final count = prefs.getInt(key) ?? 0;
@@ -167,7 +173,7 @@ class FocusHistoryService extends ChangeNotifier {
   /// Gets total interruptions for a specific calendar date
   Future<int> getInterruptionsForDate(DateTime date) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       final dateStr = formatDate(date);
       return prefs.getInt('$_prefixInterruptionDay$dateStr') ?? 0;
     } catch (_) {
@@ -178,8 +184,14 @@ class FocusHistoryService extends ChangeNotifier {
   /// Gets completed session count for a specific calendar date
   Future<int> getSessionCountForDate(DateTime date) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      return prefs.getInt('$_prefixSessionCountDay${formatDate(date)}') ?? 0;
+      final prefs = await loadPersistentPreferences();
+      final raw = prefs.getString(_keySettlementState);
+      final counts = raw == null
+          ? null
+          : (jsonDecode(raw) as Map)['counts'] as Map;
+      return counts?[formatDate(date)] as int? ??
+          prefs.getInt('$_prefixSessionCountDay${formatDate(date)}') ??
+          0;
     } catch (_) {
       return 0;
     }
@@ -188,9 +200,13 @@ class FocusHistoryService extends ChangeNotifier {
   /// Retrieves focus seconds for a specific calendar date
   Future<int> getFocusSecondsForDate(DateTime date) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       final dateStr = formatDate(date);
-      return prefs.getInt('$_prefixFocusSecDay$dateStr') ?? 0;
+      final raw = prefs.getString(_keySettlementState);
+      final days = raw == null ? null : (jsonDecode(raw) as Map)['days'] as Map;
+      return days?[dateStr] as int? ??
+          prefs.getInt('$_prefixFocusSecDay$dateStr') ??
+          0;
     } catch (_) {
       return 0;
     }
@@ -200,9 +216,14 @@ class FocusHistoryService extends ChangeNotifier {
   Future<Map<int, int>> getHourlyFocusStats() async {
     final result = <int, int>{};
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
+      final raw = prefs.getString(_keySettlementState);
+      final hours = raw == null
+          ? null
+          : (jsonDecode(raw) as Map)['hours'] as Map;
       for (int h = 0; h < 24; h++) {
-        result[h] = prefs.getInt('$_prefixHourlyFocus$h') ?? 0;
+        result[h] =
+            hours?['$h'] as int? ?? prefs.getInt('$_prefixHourlyFocus$h') ?? 0;
       }
     } catch (_) {}
     return result;
@@ -260,19 +281,21 @@ class FocusHistoryService extends ChangeNotifier {
     final dayBefore = today.subtract(const Duration(days: 2));
     final done = {..._completedDates, ..._shieldedDates};
     if (done.contains(formatDate(today)) ||
-        done.contains(formatDate(yesterday)))
+        done.contains(formatDate(yesterday))) {
       return false;
+    }
     if (!done.contains(formatDate(dayBefore))) return false;
     if (yesterday.isBefore(
       DateTime(protectFrom.year, protectFrom.month, protectFrom.day),
-    ))
+    )) {
       return false;
+    }
     if (!consumeTicket()) return false;
 
     // Assign after the await so a concurrent loadData() can't overwrite the new entry.
     final updated = [..._shieldedDates, formatDate(yesterday)];
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       await prefs.setStringList(_keyShieldedDates, updated);
     } catch (_) {}
     _shieldedDates = updated;
