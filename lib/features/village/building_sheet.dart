@@ -82,12 +82,19 @@ class _BuildingSheetState extends State<_BuildingSheet> {
                   : () async {
                       if (_busy) return; // two taps can land before the rebuild
                       setState(() => _busy = true);
-                      final ok = await player.build(b, rank);
-                      if (!context.mounted) return;
-                      if (ok) {
-                        Navigator.of(context).pop();
-                      } else {
-                        setState(() => _busy = false);
+                      try {
+                        final ok = await player.build(b, rank);
+                        if (ok && context.mounted) {
+                          Navigator.of(context).pop();
+                        }
+                      } catch (_) {
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('Chưa lưu được công trình. Hãy thử lại.'),
+                          ));
+                        }
+                      } finally {
+                        if (mounted) setState(() => _busy = false);
                       }
                     },
               style: FilledButton.styleFrom(

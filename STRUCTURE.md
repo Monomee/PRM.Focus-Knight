@@ -76,6 +76,7 @@ lib/
 | `services/distraction_guard.dart` | Quản lý ân hạn, lần phạt HP và nhịp trừ Coin khi dùng app bị chặn. |
 | `services/foreground_task_service.dart` | Khởi động/dừng foreground service và cập nhật thông báo phiên. |
 | `services/overlay_service.dart` | Kiểm tra quyền, mở/đóng overlay và gửi trạng thái trận sang overlay. |
+| `services/persistent_preferences.dart` | Không tin cache sau lỗi ghi cho đến khi đọc lại thành công; dùng chung cho ví, lịch sử và journal. |
 | `widgets/cover_rect.dart` | Tính vùng ảnh theo cách hiển thị cover. |
 | `widgets/flat_theme.dart` | Màu sắc, kiểu card và chip lựa chọn dùng chung. |
 | `widgets/ribbon.dart` | Ribbon cho HUD và đồng hồ. |
@@ -121,8 +122,9 @@ Dữ liệu được lưu cục bộ bằng SharedPreferences. Các nhóm khóa 
 | Lịch sử | `fk_completed_dates`, `fk_total_focus_seconds_all_time`, `fk_focus_sec_*`, `fk_hourly_focus_*`, `fk_session_count_*`, `fk_interruption_day_*` |
 | Hạn mức MXH | `fk_daily_limit_minutes`, `fk_app_limit_*` |
 | Khoản trả thưởng đang xử lý | `fk_pending_settlement` |
+| Snapshot ví và lịch sử | `fk_wallet_state` (số dư, công trình, ngày xây Kho lương, ID đã trả), `fk_history_settlement_state` (tổng giờ, ngày/giờ/số phiên, ID đã ghi) |
 
-`fk_gold` là khóa lưu Coin được giữ từ phiên bản trước. Bản ghi trả thưởng phục vụ trận đã thắng; nó không lưu toàn bộ trạng thái để khôi phục trận đang chơi.
+`fk_gold` là khóa Coin cũ dùng khi chưa có snapshot ví. Snapshot là nguồn ưu tiên cho ví và lịch sử; các khóa cũ vẫn được đọc để giữ tiến độ trước đây. Bản ghi trả thưởng phục vụ trận đã thắng; nó không lưu toàn bộ trạng thái để khôi phục trận đang chơi.
 
 ## Android
 

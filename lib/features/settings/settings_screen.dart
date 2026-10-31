@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../core/constants/blacklist_constants.dart';
 import '../../core/services/overlay_service.dart';
 import '../../core/widgets/flat_theme.dart';
@@ -9,7 +10,11 @@ import '../telemetry/screen_time_tracker.dart';
 
 /// Permissions, screen-time limits and battle preferences.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.screenTimeTracker, required this.overlayService});
+  const SettingsScreen({
+    super.key,
+    required this.screenTimeTracker,
+    required this.overlayService,
+  });
   final ScreenTimeTracker screenTimeTracker;
   final OverlayService overlayService;
 
@@ -18,25 +23,43 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final TextEditingController _limitTextController =
-      TextEditingController(text: '${widget.screenTimeTracker.dailyLimitMinutes}');
+  late final TextEditingController _limitTextController = TextEditingController(
+    text: '${widget.screenTimeTracker.dailyLimitMinutes}',
+  );
+  late final FocusNode _limitFocusNode = FocusNode();
+  late int _syncedDailyLimit;
+  bool _limitIsDirty = false;
   int _longRestMinutes = 15;
 
   @override
   void initState() {
     super.initState();
+    _syncedDailyLimit = widget.screenTimeTracker.dailyLimitMinutes;
+    _limitTextController.addListener(_onLimitTextChanged);
     widget.screenTimeTracker.addListener(_onTrackerChanged);
     widget.overlayService.addListener(_onTrackerChanged);
     widget.screenTimeTracker.refreshUsageStats();
     SharedPreferences.getInstance().then((p) {
-      if (mounted) setState(() => _longRestMinutes = p.getInt(kLongRestMinutesKey) ?? 15);
+      if (mounted) {
+        setState(() => _longRestMinutes = p.getInt(kLongRestMinutesKey) ?? 15);
+      }
     });
   }
 
+  void _onLimitTextChanged() {
+    _limitIsDirty = _limitTextController.text.trim() != '$_syncedDailyLimit';
+  }
+
   void _onTrackerChanged() {
-    final currentVal = int.tryParse(_limitTextController.text.trim());
-    if (currentVal != widget.screenTimeTracker.dailyLimitMinutes) {
-      _limitTextController.text = '${widget.screenTimeTracker.dailyLimitMinutes}';
+    final dailyLimit = widget.screenTimeTracker.dailyLimitMinutes;
+    if (dailyLimit != _syncedDailyLimit) {
+      final wasDirty = _limitIsDirty;
+      _syncedDailyLimit = dailyLimit;
+      if (!wasDirty && !_limitFocusNode.hasFocus) {
+        _limitTextController.text = '$dailyLimit';
+      } else {
+        _limitIsDirty = _limitTextController.text.trim() != '$dailyLimit';
+      }
     }
     if (mounted) setState(() {});
   }
@@ -45,6 +68,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     widget.screenTimeTracker.removeListener(_onTrackerChanged);
     widget.overlayService.removeListener(_onTrackerChanged);
+    _limitTextController.removeListener(_onLimitTextChanged);
+    _limitFocusNode.dispose();
     _limitTextController.dispose();
     super.dispose();
   }
@@ -59,6 +84,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _saveDailyLimit() {
     final minutes = int.tryParse(_limitTextController.text.trim());
     if (minutes != null && minutes > 0) {
+      _syncedDailyLimit = minutes;
+      _limitIsDirty = false;
       widget.screenTimeTracker.setDailyLimitMinutes(minutes);
       FocusScope.of(context).unfocus();
       ScaffoldMessenger.of(context).showSnackBar(
@@ -90,12 +117,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         title: Row(
           children: [
-            const Icon(Icons.timer_outlined, color: Color(0xFFFFB300), size: 20),
+            const Icon(
+              Icons.timer_outlined,
+              color: Color(0xFFFFB300),
+              size: 20,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
                 'Hạn mức: $appName',
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],
@@ -114,15 +149,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               autofocus: true,
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
               decoration: InputDecoration(
                 suffixText: 'phút/ngày',
                 suffixStyle: const TextStyle(color: Color(0xFF94A3B8)),
                 filled: true,
                 fillColor: const Color(0xFF121520),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF334155))),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFFFB300))),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 12,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFF334155)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: const BorderSide(color: Color(0xFFFFB300)),
+                ),
               ),
             ),
           ],
@@ -130,7 +178,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Hủy', style: TextStyle(color: Color(0xFF94A3B8))),
+            child: const Text(
+              'Hủy',
+              style: TextStyle(color: Color(0xFF94A3B8)),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
@@ -140,14 +191,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Navigator.of(ctx).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text('Đã cập nhật hạn mức cho $appName: $mins phút/ngày'),
+                    content: Text(
+                      'Đã cập nhật hạn mức cho $appName: $mins phút/ngày',
+                    ),
                     duration: const Duration(seconds: 2),
                     backgroundColor: const Color(0xFF1E2333),
                   ),
                 );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFD97706), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD97706),
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Lưu'),
           ),
         ],
@@ -160,17 +216,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
-        const Text('Cài đặt', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+        const Text(
+          'Cài đặt',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+        ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: Flat.cardBox(),
-          child: Row(children: [
-            const Expanded(child: Text('Nghỉ dài (phút)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-            IconButton(onPressed: () => _setLongRest(_longRestMinutes - 5), icon: const Icon(Icons.remove)),
-            Text('$_longRestMinutes', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
-            IconButton(onPressed: () => _setLongRest(_longRestMinutes + 5), icon: const Icon(Icons.add)),
-          ]),
+          child: Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Nghỉ dài (phút)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                onPressed: () => _setLongRest(_longRestMinutes - 5),
+                icon: const Icon(Icons.remove),
+              ),
+              Text(
+                '$_longRestMinutes',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              IconButton(
+                onPressed: () => _setLongRest(_longRestMinutes + 5),
+                icon: const Icon(Icons.add),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 12),
         _buildTelemetryCard(),
@@ -219,7 +297,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               InkWell(
                 onTap: () => tracker.refreshUsageStats(),
-                child: const Icon(Icons.refresh, size: 16, color: Color(0xFF94A3B8)),
+                child: const Icon(
+                  Icons.refresh,
+                  size: 16,
+                  color: Color(0xFF94A3B8),
+                ),
               ),
             ],
           ),
@@ -236,7 +318,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.warning_amber_rounded, color: Color(0xFFF59E0B), size: 18),
+                  const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Color(0xFFF59E0B),
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
@@ -249,10 +335,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFD97706),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       minimumSize: Size.zero,
                     ),
-                    child: const Text('Cấp quyền', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                    child: const Text(
+                      'Cấp quyền',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -264,7 +359,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 const Row(
                   children: [
-                    Icon(Icons.hourglass_top, size: 14, color: Color(0xFFFFB300)),
+                    Icon(
+                      Icons.hourglass_top,
+                      size: 14,
+                      color: Color(0xFFFFB300),
+                    ),
                     SizedBox(width: 5),
                     Text(
                       'HẠN MỨC MXH TRONG NGÀY',
@@ -278,18 +377,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ],
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: isExceeded
                         ? const Color(0xFFEF4444).withValues(alpha: 0.2)
                         : (progress >= 0.8
-                            ? const Color(0xFFF59E0B).withValues(alpha: 0.2)
-                            : const Color(0xFF10B981).withValues(alpha: 0.2)),
+                              ? const Color(0xFFF59E0B).withValues(alpha: 0.2)
+                              : const Color(0xFF10B981).withValues(alpha: 0.2)),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isExceeded
                           ? const Color(0xFFEF4444)
-                          : (progress >= 0.8 ? const Color(0xFFF59E0B) : const Color(0xFF10B981)),
+                          : (progress >= 0.8
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF10B981)),
                     ),
                   ),
                   child: Text(
@@ -301,7 +405,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       fontWeight: FontWeight.bold,
                       color: isExceeded
                           ? const Color(0xFFEF4444)
-                          : (progress >= 0.8 ? const Color(0xFFF59E0B) : const Color(0xFF10B981)),
+                          : (progress >= 0.8
+                                ? const Color(0xFFF59E0B)
+                                : const Color(0xFF10B981)),
                     ),
                   ),
                 ),
@@ -313,6 +419,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Plain Text Input Field for Daily Limit
             TextField(
               controller: _limitTextController,
+              focusNode: _limitFocusNode,
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => _saveDailyLimit(),
@@ -324,15 +431,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               decoration: InputDecoration(
                 hintText: 'Nhập số phút (ví dụ: 45, 60)',
-                hintStyle: const TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                hintStyle: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                ),
                 filled: true,
                 fillColor: const Color(0xFF121622),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                prefixIcon: const Icon(Icons.timer_outlined, size: 18, color: Color(0xFFFFB300)),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                prefixIcon: const Icon(
+                  Icons.timer_outlined,
+                  size: 18,
+                  color: Color(0xFFFFB300),
+                ),
                 suffixIcon: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text('phút', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                    const Text(
+                      'phút',
+                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                    ),
                     const SizedBox(width: 8),
                     Padding(
                       padding: const EdgeInsets.only(right: 6),
@@ -341,11 +461,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFFD97706),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
                           minimumSize: Size.zero,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(6),
+                          ),
                         ),
-                        child: const Text('Lưu', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                        child: const Text(
+                          'Lưu',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -356,7 +487,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFFFB300), width: 1.5),
+                  borderSide: const BorderSide(
+                    color: Color(0xFFFFB300),
+                    width: 1.5,
+                  ),
                 ),
               ),
             ),
@@ -366,7 +500,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Quick preset chips
             Row(
               children: [
-                const Text('Gợi ý:', style: TextStyle(fontSize: 10, color: Color(0xFF64748B))),
+                const Text(
+                  'Gợi ý:',
+                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                ),
                 const SizedBox(width: 6),
                 ...[15, 30, 60, 120].map((mins) {
                   return Padding(
@@ -378,7 +515,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       },
                       borderRadius: BorderRadius.circular(6),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
                           color: tracker.dailyLimitMinutes == mins
                               ? const Color(0xFFFFB300).withValues(alpha: 0.2)
@@ -431,7 +571,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    color: isExceeded ? const Color(0xFFEF4444) : const Color(0xFF94A3B8),
+                    color: isExceeded
+                        ? const Color(0xFFEF4444)
+                        : const Color(0xFF94A3B8),
                   ),
                 ),
                 Text(
@@ -453,11 +595,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: const [
                 Text(
                   'ỨNG DỤNG THEO DÕI',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF94A3B8),
+                  ),
                 ),
                 Text(
                   'ĐÃ DÙNG / HẠN MỨC',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF94A3B8)),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF94A3B8),
+                  ),
                 ),
               ],
             ),
@@ -477,12 +627,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text('• $appName', style: const TextStyle(fontSize: 11, color: Color(0xFFCBD5E1))),
+                        Text(
+                          '• $appName',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFFCBD5E1),
+                          ),
+                        ),
                         if (isAppExceeded) ...[
                           const SizedBox(width: 4),
                           const Text(
                             '⚠️ Quá hạn',
-                            style: TextStyle(fontSize: 9, color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 9,
+                              color: Color(0xFFEF4444),
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ],
                       ],
@@ -496,8 +656,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             fontSize: 11,
                             color: isAppExceeded
                                 ? const Color(0xFFEF4444)
-                                : (dur.inSeconds > 0 ? const Color(0xFFFBBF24) : const Color(0xFF94A3B8)),
-                            fontWeight: dur.inSeconds > 0 ? FontWeight.bold : FontWeight.normal,
+                                : (dur.inSeconds > 0
+                                      ? const Color(0xFFFBBF24)
+                                      : const Color(0xFF94A3B8)),
+                            fontWeight: dur.inSeconds > 0
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                           ),
                         ),
                         const SizedBox(width: 6),
@@ -508,9 +672,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             decoration: BoxDecoration(
                               color: const Color(0xFF1E2333),
                               borderRadius: BorderRadius.circular(4),
-                              border: Border.all(color: const Color(0xFF334155)),
+                              border: Border.all(
+                                color: const Color(0xFF334155),
+                              ),
                             ),
-                            child: const Icon(Icons.edit, size: 12, color: Color(0xFFFFB300)),
+                            child: const Icon(
+                              Icons.edit,
+                              size: 12,
+                              color: Color(0xFFFFB300),
+                            ),
                           ),
                         ),
                       ],
@@ -523,7 +693,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 8),
             const Text(
               '💡 Khi dùng quá hạn mức, hệ thống sẽ gửi thông báo đẩy (popup) nhắc nhở nghỉ ngơi.',
-              style: TextStyle(fontSize: 10, color: Color(0xFF64748B), fontStyle: FontStyle.italic),
+              style: TextStyle(
+                fontSize: 10,
+                color: Color(0xFF64748B),
+                fontStyle: FontStyle.italic,
+              ),
             ),
             const SizedBox(height: 10),
 
@@ -536,11 +710,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? widget.overlayService.openSettings()
                         : widget.overlayService.requestPermission(),
                     icon: Icon(
-                      widget.overlayService.hasPermission ? Icons.settings : Icons.security,
+                      widget.overlayService.hasPermission
+                          ? Icons.settings
+                          : Icons.security,
                       size: 14,
                     ),
                     label: Text(
-                      widget.overlayService.hasPermission ? 'Quản lý Overlay' : 'Cấp quyền Overlay',
+                      widget.overlayService.hasPermission
+                          ? 'Quản lý Overlay'
+                          : 'Cấp quyền Overlay',
                       style: const TextStyle(fontSize: 11),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -561,7 +739,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: OutlinedButton.icon(
                     onPressed: () => tracker.openSettings(),
                     icon: const Icon(Icons.tune, size: 14),
-                    label: const Text('Cài đặt Sử dụng', style: TextStyle(fontSize: 11)),
+                    label: const Text(
+                      'Cài đặt Sử dụng',
+                      style: TextStyle(fontSize: 11),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF94A3B8),
                       side: const BorderSide(color: Color(0xFF334155)),

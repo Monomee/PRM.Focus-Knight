@@ -1,6 +1,8 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'core/constants/blacklist_constants.dart';
 import 'core/services/foreground_task_service.dart';
 import 'core/services/overlay_service.dart';
@@ -34,10 +36,12 @@ void main() {
 @pragma("vm:entry-point")
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: BlockerOverlayWidget(),
-  ));
+  runApp(
+    const MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: BlockerOverlayWidget(),
+    ),
+  );
 }
 
 class FocusKnightApp extends StatelessWidget {
@@ -76,12 +80,14 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   late final OverlayService _overlayService;
 
   Timer? _distractionCheckTimer;
+  bool _distractionCheckRunning = false;
   late final DistractionGuard _guard = DistractionGuard(
     graceSeconds: () => graceSecondsFor(_player.levelOf(Building.tower)),
     onPenalty: (pkg) {
       _sessionController.applyBlacklistPenalty();
       _overlayService.showBlockerOverlay(
-        reason: '${BlacklistConstants.appNames[pkg] ?? pkg} bị chặn trong lúc tập trung!',
+        reason:
+            '${BlacklistConstants.appNames[pkg] ?? pkg} bị chặn trong lúc tập trung!',
       );
       _pushOverlayState(pkg);
     },
@@ -98,6 +104,21 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   );
   String? _blockedPkg;
   bool _interruptionCounted = false;
+  bool _wasInBattle = false;
+
+  void _handleBattleState() {
+    final inBattle = _sessionController.inBattle;
+    if (_wasInBattle && !inBattle) {
+      _guard.reset();
+      final defeated = _sessionController.lastResult?.won == false;
+      if (defeated && _overlayService.isOverlayOpen) {
+        _pushOverlayState(null);
+      } else {
+        _overlayService.closeBlockerOverlay();
+      }
+    }
+    _wasInBattle = inBattle;
+  }
 
   void _pushOverlayState(String? pkg) {
     _blockedPkg = pkg ?? _blockedPkg;
@@ -105,7 +126,9 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       appName: BlacklistConstants.appNames[_blockedPkg] ?? _blockedPkg ?? '',
       heroHp: _sessionController.heroHp,
       pendingCoins: _sessionController.pendingCoins,
-      defeated: _sessionController.lastResult?.won == false && !_sessionController.inBattle,
+      defeated:
+          _sessionController.lastResult?.won == false &&
+          !_sessionController.inBattle,
     );
   }
 
@@ -117,6 +140,8 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     _player = PlayerState();
     _initProgress();
     _sessionController = FocusSessionController(player: _player);
+    _wasInBattle = _sessionController.inBattle;
+    _sessionController.addListener(_handleBattleState);
     _screenTimeTracker = ScreenTimeTracker();
     _overlayService = OverlayService();
   }
@@ -142,6 +167,49 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     );
   }
 
+  Future<void> _checkDistraction() async {
+    if (_distractionCheckRunning || _overlayService.isAppInForeground) return;
+    _distractionCheckRunning = true;
+    try {
+      if (_sessionController.inBattle) {
+        final fg = await _screenTimeTracker.foregroundSinceLeft();
+        if (_overlayService.isAppInForeground) return;
+        if (fg != null &&
+            !_interruptionCounted &&
+            _sessionController.isFocusing) {
+          _interruptionCounted = true;
+          _sessionController.recordInterruptionEvent();
+        }
+        if (_sessionController.isFocusing) {
+          _guard.tick(
+            BlacklistConstants.defaultBlacklist.contains(fg) ? fg : null,
+            DateTime.now(),
+          );
+        } else {
+          _guard.reset();
+          if (_overlayService.isOverlayOpen) {
+            _overlayService.closeBlockerOverlay();
+          }
+        }
+        return;
+      }
+      final blacklistedPkg = await _screenTimeTracker
+          .getActiveBlacklistedPackage();
+      if (_overlayService.isAppInForeground) return;
+      if (blacklistedPkg != null &&
+          _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
+        ForegroundTaskService.notifyAppLimitExceeded(
+          appName:
+              BlacklistConstants.appNames[blacklistedPkg] ?? blacklistedPkg,
+          packageName: blacklistedPkg,
+          limitMinutes: _screenTimeTracker.getAppLimit(blacklistedPkg),
+        );
+      }
+    } finally {
+      _distractionCheckRunning = false;
+    }
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -157,44 +225,12 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
 
       // Periodic monitor for blacklisted apps while in background
       _distractionCheckTimer?.cancel();
-      _distractionCheckTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-        if (_overlayService.isAppInForeground) return;
-
-        if (_sessionController.inBattle) {
-          final fg = await _screenTimeTracker.foregroundSinceLeft();
-          if (_overlayService.isAppInForeground) return; // resumed while we were querying
-          // Locking the screen opens no app, so it is not a distraction.
-          if (fg != null && !_interruptionCounted && _sessionController.isFocusing) {
-            _interruptionCounted = true;
-            _sessionController.recordInterruptionEvent();
-          }
-          if (_sessionController.isFocusing) {
-            _guard.tick(BlacklistConstants.defaultBlacklist.contains(fg) ? fg : null, DateTime.now());
-          } else {
-            // Rest breaks are free: drop any pending grace and blocker.
-            _guard.reset();
-            if (_overlayService.isOverlayOpen) _overlayService.closeBlockerOverlay();
-          }
-          return;
-        }
-        // Battle just ended (e.g. defeat) with the blocker still up: drop it once the user
-        // leaves the blacklisted app (the overlay also closes itself after a few seconds).
-        if (_overlayService.isOverlayOpen) {
-          _guard.reset();
-          final fg = await _screenTimeTracker.foregroundSinceLeft();
-          if (!BlacklistConstants.defaultBlacklist.contains(fg)) _overlayService.closeBlockerOverlay();
-        }
-        final blacklistedPkg = await _screenTimeTracker.getActiveBlacklistedPackage();
-        if (blacklistedPkg != null && _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
-          // Standard system notification popup (NOT full-screen blocker overlay!)
-          ForegroundTaskService.notifyAppLimitExceeded(
-            appName: BlacklistConstants.appNames[blacklistedPkg] ?? blacklistedPkg,
-            packageName: blacklistedPkg,
-            limitMinutes: _screenTimeTracker.getAppLimit(blacklistedPkg),
-          );
-        }
-      });
+      _distractionCheckTimer = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _checkDistraction(),
+      );
     } else if (state == AppLifecycleState.resumed) {
+      unawaited(_sessionController.retrySettlement());
       // User returned to FocusKnight: stop tracker timer, close overlay immediately
       _overlayService.isAppInForeground = true;
       _distractionCheckTimer?.cancel();
@@ -202,7 +238,9 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       _overlayService.closeBlockerOverlay();
       // Permissions may have been granted in system Settings while we were away.
       _overlayService.checkPermission();
-      _screenTimeTracker.checkPermission().then((_) => _screenTimeTracker.refreshUsageStats());
+      _screenTimeTracker.checkPermission().then(
+        (_) => _screenTimeTracker.refreshUsageStats(),
+      );
       // The process can live for days (foreground service): re-check the weekly ticket.
       _refreshStreakShield();
     }
@@ -213,6 +251,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     _distractionCheckTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _player.dispose();
+    _sessionController.removeListener(_handleBattleState);
     _sessionController.dispose();
     _screenTimeTracker.dispose();
     _overlayService.dispose();

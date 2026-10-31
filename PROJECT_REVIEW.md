@@ -1,96 +1,132 @@
 # Review dự án FocusKnight
 
-Ngày review: 2026-10-28.
+Ngày review ban đầu: 2026-10-28.
 
-Tài liệu này tổng hợp 13 vấn đề đã báo cáo trong phiên review. Không có mã nguồn ứng dụng nào được sửa trong quá trình review.
+Cập nhật gần nhất: 2026-10-31.
+
+Tài liệu này tổng hợp 13 vấn đề đã báo cáo trong phiên review và trạng thái xử lý hiện tại. Sau phúc tra nhánh `camtu`, các lỗi còn lại ở mục 1, 5, 7 và 8 đã được sửa bổ sung. Các mục "Nên cải thiện" và "Có thể tinh gọn" vẫn là công việc còn lại.
 
 ## Phạm vi và kết quả kiểm tra
 
 FocusKnight là ứng dụng Pomodoro kết hợp game pixel: hoàn thành trận để nhận tài nguyên, nâng làng và mở nhân vật. Đánh giá kỹ thuật dựa trên mô hình hiện tại: dữ liệu lưu trên một điện thoại Android, không có máy chủ.
 
-Đã đọc toàn bộ 39 file Dart trong `lib/`, 22 file test, phần Android tùy chỉnh, công cụ tạo icon và tài liệu; rà soát thêm cấu hình các nền tảng còn lại.
+Đã đọc mã Dart trong `lib/`, các test, phần Android tùy chỉnh, công cụ tạo icon và tài liệu; rà soát thêm cấu hình các nền tảng còn lại.
+
+Kết quả tại thời điểm review ban đầu:
 
 - `flutter analyze --no-pub`: không phát hiện lỗi.
 - `flutter test --no-pub`: 99 test đạt.
-- Sau khi review, Git không có thay đổi mã nguồn.
 
-Các phát hiện dưới đây dựa trên việc đọc mã và đối chiếu test hiện có. Chưa tái hiện từng lỗi trên thiết bị thật.
+Kết quả sau đợt sửa bổ sung ngày 2026-10-31:
+
+- `flutter analyze --no-pub`: không phát hiện lỗi.
+- `flutter test --no-pub`: 132 test đạt.
+- `flutter build apk --debug --no-pub`: đạt, cài và chạy trên Samsung SM-G781N, Android 13 qua USB.
+- `git diff --check`: đạt.
+
+Đã kiểm tra thêm trên thiết bị thật cho khóa màn hình, overlay khi thắng trận, cảnh báo vượt hạn khi YouTube mở liên tục và nạp hạn mức cài đặt. Chưa kiểm tra mọi tình huống trên mọi phiên bản Android/OEM. Báo cáo phúc tra trước khi sửa được giữ tại [camtu-verification](docs/reviews/2026-10-31-camtu-verification.md).
 
 Điểm tốt: luật game tách khỏi giao diện, tái sử dụng component hợp lý và có test cho nhiều luồng chính. Ưu tiên cải thiện độ tin cậy của dữ liệu, chống xao nhãng và thống kê.
 
-## Cần sửa
+## Đã khắc phục
 
 ### 1. Lỗi lưu dữ liệu bị bỏ qua nhưng vẫn đánh dấu đã trả thưởng
 
-Vị trí: [player_state.dart](lib/core/game/player_state.dart), dòng 123; [settlement.dart](lib/features/focus_session/settlement.dart), dòng 35.
+Trạng thái: **Đã sửa**.
 
-- **Hiện tại:** Ví và lịch sử bắt lỗi ghi dữ liệu bằng `catch (_) {}`.
-- **Vấn đề:** Nếu ghi thất bại, `Settlement` vẫn có thể đánh dấu bước đó đã hoàn thành và xóa bản ghi chờ xử lý.
-- **Cải thiện:** Cho lỗi ghi dữ liệu truyền về nơi trả thưởng; chỉ đánh dấu hoàn tất sau khi xác nhận lưu thành công.
-- **Nếu giữ nguyên:** Người dùng có thể thấy nhận thưởng trên màn hình nhưng mất tiền hoặc lịch sử sau khi mở lại app.
+Vị trí chính: [player_state.dart](lib/core/game/player_state.dart), [focus_history_service.dart](lib/features/dashboard/services/focus_history_service.dart), [settlement.dart](lib/features/focus_session/settlement.dart), [focus_session_controller.dart](lib/features/focus_session/focus_session_controller.dart).
+
+- Settlement hiện dùng hàng đợi tuần tự để các khoản trả thưởng không ghi đè hoặc chạy chồng lên nhau.
+- Mỗi bước ghi lịch sử và ví có `settlementId` riêng. Ví và lịch sử lưu danh sách ID đã áp dụng để retry không cộng trùng nếu ứng dụng dừng giữa side effect và bước cập nhật journal.
+- Tiến độ settlement chỉ được cập nhật sau khi bước tương ứng lưu thành công; bản ghi chờ được giữ lại khi có lỗi.
+- Số dư trong bộ nhớ chỉ thay đổi sau khi trạng thái ví bền vững đã được ghi thành công.
+- Có hỗ trợ đọc bản ghi pending theo định dạng cũ.
+- Khoản thưởng mới được lưu vào journal trước khi xử lý khoản cũ đang lỗi. Retry dùng cùng ID, không tạo khoản thưởng thứ hai.
+- Xây làng và nhận thưởng dùng chung hàng đợi ghi ví; số dư, cấp công trình và ngày xây Kho lương được lưu cùng snapshot, không hoàn lại tiền đã chi sau khi nạp lại.
+- Getter thống kê đọc snapshot lịch sử đã ghi thành công, có fallback dữ liệu cũ; không phụ thuộc các khóa phụ chưa kịp đồng bộ khi tiến trình bị tắt.
+- Khi ghi thất bại, cache bị đánh dấu chưa tin cậy cho đến khi đọc phục hồi thành công, kể cả khi lần đọc phục hồi đầu tiên cũng lỗi.
+- Nếu lần ghi journal đầu tiên lỗi, controller giữ khoản thưởng, hiển thị nút thử lại ở kết quả/Trang chủ và ngăn bắt đầu trận mới làm mất khoản này.
 
 ### 2. Số phút hôm qua có thể bị cộng sang hôm nay
 
-Vị trí: [focus_history_service.dart](lib/features/dashboard/services/focus_history_service.dart), dòng 63.
+Trạng thái: **Đã sửa**.
 
-- **Hiện tại:** `_todayFocusSeconds` được nạp khi đọc dữ liệu, rồi cộng dồn mỗi lần hoàn thành phiên.
-- **Vấn đề:** App mở qua nửa đêm không đặt lại biến này. Ví dụ hôm qua có 60 phút, hôm nay hoàn thành 25 phút thì khóa dữ liệu hôm nay được ghi thành 85 phút.
-- **Cải thiện:** Theo dõi ngày của bộ đếm, hoặc đọc số giây từ đúng khóa ngày trước khi cộng.
-- **Nếu giữ nguyên:** Dashboard, thống kê theo ngày và tốc độ xao nhãng đều có thể sai.
+Vị trí chính: [focus_history_service.dart](lib/features/dashboard/services/focus_history_service.dart).
 
-### 3. Thống kê đang trình bày dữ liệu mẫu như dữ liệu cá nhân
+- Mỗi phiên hoàn thành lấy ngày hiện tại tại thời điểm ghi và đọc số giây từ đúng khóa của ngày đó trước khi cộng.
+- Cache `todayFocusSeconds` được cập nhật bằng dữ liệu của ngày vừa ghi, không tiếp tục dùng tổng của ngày trước khi ứng dụng chạy qua nửa đêm.
+- Clock có thể được inject để kiểm thử hồi quy đổi ngày.
 
-Vị trí: [analytics_service.dart](lib/features/dashboard/services/analytics_service.dart), dòng 128; [correlation_chart_card.dart](lib/features/dashboard/widgets/correlation_chart_card.dart), dòng 102.
+### 3. Thống kê trình bày dữ liệu mẫu như dữ liệu cá nhân
 
-- **Hiện tại:** Khi thiếu dữ liệu, app tự điền giờ MXH, giờ tập trung, hai lần xao nhãng và xu hướng bảy ngày. Câu kết luận “40%/95%” được viết cố định.
-- **Vấn đề:** Người mới cài vẫn nhận được báo cáo về hành vi chưa xảy ra; người không xao nhãng vẫn có thể bị tính hai lần.
-- **Cải thiện:** Bỏ dữ liệu mẫu khỏi báo cáo thật; phân biệt rõ `0`, chưa có dữ liệu và chưa cấp quyền. Chưa đủ dữ liệu thì chưa đưa kết luận.
-- **Nếu giữ nguyên:** Người dùng không thể tin báo cáo dù giao diện hiển thị đẹp.
+Trạng thái: **Đã sửa**.
+
+Vị trí chính: [analytics_service.dart](lib/features/dashboard/services/analytics_service.dart), [correlation_chart_card.dart](lib/features/dashboard/widgets/correlation_chart_card.dart), [distraction_velocity_card.dart](lib/features/dashboard/widgets/distraction_velocity_card.dart), [golden_hours_card.dart](lib/features/dashboard/widgets/golden_hours_card.dart).
+
+- Đã bỏ các baseline và xu hướng mẫu khỏi báo cáo thật.
+- Dữ liệu MXH dùng `null` cho trạng thái chưa có dữ liệu; giá trị `0` được giữ đúng nghĩa là đã đo và không sử dụng.
+- Không còn tự thay thời gian tập trung bằng 1,2 giờ hoặc số lần xao nhãng bằng 2.
+- Không còn kết luận “40%/95%” viết cố định.
+- Khi chưa đủ dữ liệu, các card hiển thị trạng thái thiếu dữ liệu thay vì tạo nhận xét cá nhân.
 
 ### 4. Khóa màn hình sau khi mở app bị chặn vẫn có thể bị phạt
 
-Vị trí: [screen_time_tracker.dart](lib/features/telemetry/screen_time_tracker.dart), dòng 184 và 228.
+Trạng thái: **Đã sửa; ca khóa màn hình đã đạt trên Samsung Android 13**.
 
-- **Hiện tại:** Bộ phát hiện chỉ lấy sự kiện mở ứng dụng và nhớ package gần nhất.
-- **Vấn đề:** Sau khi mở YouTube rồi khóa màn hình, sự kiện đóng/tạm dừng hoặc khóa màn hình không xóa package đã nhớ. Guard vẫn có thể coi YouTube đang được sử dụng.
-- **Cải thiện:** Xử lý cả sự kiện rời ứng dụng và trạng thái màn hình; thêm test cho chuỗi mở YouTube → khóa máy trong thời gian ân hạn.
-- **Nếu giữ nguyên:** Người dùng có thể mất HP hoặc Coin khi điện thoại đã khóa. Cần xác nhận thêm trên thiết bị thật.
+Vị trí chính: [screen_time_tracker.dart](lib/features/telemetry/screen_time_tracker.dart), [main.dart](lib/main.dart).
+
+- Detector foreground hiện dựng trạng thái từ cả sự kiện resume, pause, màn hình interactive/non-interactive và keyguard shown/hidden.
+- Khi ứng dụng bị pause, app khác được resume, màn hình tắt hoặc khóa máy, package cũ được xóa đúng cách.
+- Guard nhận `null` khi không còn app blacklist thực sự hoạt động nên dừng thời gian ân hạn và không tiếp tục phạt.
+- Polling được tuần tự hóa; cửa sổ overlap và dedupe sự kiện tránh bỏ event UsageStats trả về trễ hoặc áp dụng lặp.
 
 ### 5. Cảnh báo hạn mức có thể bỏ lỡ lúc người dùng vượt hạn
 
-Vị trí: [screen_time_tracker.dart](lib/features/telemetry/screen_time_tracker.dart), dòng 199; [main.dart](lib/main.dart), dòng 187.
+Trạng thái: **Đã sửa; ca vượt hạn khi dùng liên tục đã đạt trên Samsung Android 13**.
 
-- **Hiện tại:** Ngoài trận, app chỉ tìm sự kiện mở ứng dụng trong 12 giây gần nhất.
-- **Vấn đề:** Người dùng mở YouTube khi chưa vượt hạn, tiếp tục xem vài phút rồi mới vượt hạn. Khi đó sự kiện mở YouTube đã nằm ngoài cửa sổ truy vấn.
-- **Cải thiện:** Giữ trạng thái ứng dụng đang hoạt động giữa các lần kiểm tra, đồng thời xử lý đúng sự kiện rời app và khóa máy.
-- **Nếu giữ nguyên:** Chức năng nhắc hạn mức có thể im lặng đúng lúc cần nhắc.
+Vị trí chính: [screen_time_tracker.dart](lib/features/telemetry/screen_time_tracker.dart), [main.dart](lib/main.dart).
+
+- Trạng thái package foreground được giữ giữa các lần polling thay vì chỉ tìm sự kiện mở trong một cửa sổ ngắn.
+- Package chỉ bị xóa khi có sự kiện rời app, app khác được mở, tắt màn hình hoặc khóa máy.
+- Cảnh báo hạn mức vì vậy vẫn có thể kích hoạt khi người dùng mở app dưới hạn rồi tiếp tục dùng đến lúc vượt hạn.
+- Main ngăn các lượt kiểm tra async chạy chồng nhau.
+- Thời gian trong ngày được dựng từ UsageEvents, gồm cả khoảng app vẫn đang mở; dừng cộng khi pause, khóa máy hoặc tắt màn hình. Không còn chờ aggregate cập nhật sau khi rời app.
+- Query lấy dữ liệu trước đầu ngày để nhận biết phiên qua nửa đêm, nhưng chỉ cộng thời gian thuộc ngày hiện tại; polling có overlap và dedupe.
+- Bộ đếm tự bắt đầu khi quyền usage được cấp sau khởi động.
+- Ca USB: YouTube ban đầu 4m51s, hạn mức 6 phút; mở liên tục 90 giây, không có cảnh báo ở 45 giây, có thông báo vượt hạn ở 90 giây mà không mở lại app.
 
 ### 6. Overlay chưa được đóng khi thắng trận trong app bị chặn
 
-Vị trí: [main.dart](lib/main.dart), dòng 182; [blocker_overlay_widget.dart](lib/features/overlay/blocker_overlay_widget.dart), dòng 43.
+Trạng thái: **Đã sửa**.
 
-- **Hiện tại:** Overlay tự đóng sau thất bại; nhánh ngoài trận chỉ đóng khi người dùng rời ứng dụng blacklist.
-- **Vấn đề:** Nếu phiên cuối hết giờ trong khi overlay đang mở trên YouTube, trận đã thắng nhưng overlay vẫn có thể tiếp tục che màn hình.
-- **Cải thiện:** Đóng overlay và reset guard ngay khi trận kết thúc, có xử lý riêng nếu cần hiển thị thất bại trong năm giây.
-- **Nếu giữ nguyên:** Người dùng vẫn bị chặn sau khi đã hoàn thành trận.
+Vị trí chính: [main.dart](lib/main.dart), [overlay_service.dart](lib/core/services/overlay_service.dart), [blocker_overlay_widget.dart](lib/features/overlay/blocker_overlay_widget.dart).
+
+- Main theo dõi chuyển trạng thái từ đang trong trận sang kết thúc trận.
+- Khi thắng hoặc kết thúc không phải thất bại, guard được reset và overlay đóng ngay dù app blacklist vẫn ở foreground.
+- Khi thất bại, trạng thái thất bại vẫn được gửi cho overlay để giữ hành vi hiển thị trong năm giây.
 
 ### 7. Khung giờ vàng có thể hiển thị sai khung giờ cao nhất
 
-Vị trí: [analytics_service.dart](lib/features/dashboard/services/analytics_service.dart), dòng 284.
+Trạng thái: **Đã sửa**.
 
-- **Hiện tại:** Chỉ một số khung giờ được chuyển thành `peakTimeSlot`; những khung còn lại giữ mặc định buổi sáng.
-- **Vấn đề:** Nếu dữ liệu tập trung cao nhất nằm trong 21–24 giờ hoặc 11–14 giờ, app vẫn có thể khuyên làm việc lúc 08:00–11:30.
-- **Cải thiện:** Lấy nhãn trực tiếp từ khung thắng cuộc. Đồng thời sửa việc gộp 00–05 giờ vào nhãn “21h–24h”.
-- **Nếu giữ nguyên:** Lời khuyên mâu thuẫn với chính biểu đồ của người dùng.
+Vị trí chính: [analytics_service.dart](lib/features/dashboard/services/analytics_service.dart), [golden_hours_card.dart](lib/features/dashboard/widgets/golden_hours_card.dart).
+
+- Khung `00h–05h` được tách riêng, không còn bị gộp vào nhãn `21h–24h`.
+- `peakTimeSlot` được lấy trực tiếp từ khung có tổng thời gian cao nhất nên các khung `11h–14h` và `21h–24h` không còn rơi về mặc định buổi sáng.
+- Khi không có dữ liệu, ứng dụng không tự chọn một khung giờ mặc định hoặc tạo lời khuyên.
+- Chọn khung từ tổng phút gốc trước khi làm tròn tỷ lệ, nên 599 phút không thắng khung 600 phút.
 
 ### 8. Ô nhập hạn mức bị ghi đè trong lúc đang sửa
 
-Vị trí: [settings_screen.dart](lib/features/settings/settings_screen.dart), dòng 36.
+Trạng thái: **Đã sửa**.
 
-- **Hiện tại:** Mọi thông báo thay đổi từ tracker hoặc overlay đều đồng bộ lại nội dung ô nhập.
-- **Vấn đề:** Tracker làm mới mỗi ba giây. Người dùng đang sửa `60` thành `120`, chưa bấm Lưu, có thể bị trả lại `60`.
-- **Cải thiện:** Không đồng bộ đè khi người dùng đang nhập; chỉ cập nhật khi giá trị cấu hình thực sự thay đổi.
-- **Nếu giữ nguyên:** Cài đặt khó thao tác và có thể lưu nhầm giá trị.
+Vị trí chính: [settings_screen.dart](lib/features/settings/settings_screen.dart).
+
+- Ô nhập theo dõi focus, trạng thái draft đã thay đổi và giá trị cấu hình đồng bộ gần nhất.
+- Notification định kỳ từ tracker hoặc overlay không ghi đè khi người dùng đang focus hoặc có draft chưa lưu.
+- Nội dung chỉ được đồng bộ khi hạn mức cấu hình thực sự thay đổi và field đang sạch, không có focus.
+- Listener, controller và `FocusNode` được giải phóng đầy đủ.
+- Baseline đồng bộ được khởi tạo trước khi đăng ký listener; lần nạp đầu hiển thị đúng cấu hình 240 thay vì giữ mặc định 60.
 
 ## Nên cải thiện
 
@@ -112,14 +148,16 @@ Vị trí: [focus_session_controller.dart](lib/features/focus_session/focus_sess
 - **Cải thiện:** Giữ thêm thời điểm của từng phiên trong quỹ và bản ghi trả thưởng. Việc chỉ công nhận giờ khi thắng vẫn có thể giữ nguyên.
 - **Nếu giữ nguyên:** Lịch ngày và khung giờ vàng không phản ánh thời gian thực sự tập trung.
 
-### 11. Test đang thiếu các tình huống dễ làm mất niềm tin nhất
+### 11. Kiểm thử thiết bị thật cho các luồng nền quan trọng
 
-Vị trí: thư mục [test](test/), đặc biệt [analytics_metrics_test.dart](test/analytics_metrics_test.dart), [focus_history_test.dart](test/focus_history_test.dart), [settlement_test.dart](test/settlement_test.dart) và [foreground_detection_test.dart](test/foreground_detection_test.dart).
+Trạng thái: **Đã bổ sung phần lớn unit/widget test; còn thiếu kiểm thử trên Android thật**.
 
-- **Hiện tại:** Bộ test bao phủ khá tốt luật thưởng, xây làng, pause, hình phạt và các màn chính.
-- **Vấn đề:** Test analytics chủ yếu kiểm tra dữ liệu có tồn tại và nằm trong khoảng hợp lệ; số liệu bịa vẫn vượt qua. Chưa có test cho các trường hợp đổi ngày, lỗi ghi dữ liệu và kết thúc trận khi overlay mở.
-- **Cải thiện:** Thêm test hồi quy cho các mục trên, ưu tiên lưu dữ liệu và chống phạt nhầm. Thêm một luồng kiểm thử trên Android thật cho cấp quyền → chạy nền → mở blacklist → khóa máy.
-- **Nếu giữ nguyên:** “99 test đạt” chưa chứng minh được các hành vi nền quan trọng.
+Vị trí: thư mục [test](test), đặc biệt [analytics_metrics_test.dart](test/analytics_metrics_test.dart), [focus_history_test.dart](test/focus_history_test.dart), [settlement_test.dart](test/settlement_test.dart), [foreground_detection_test.dart](test/foreground_detection_test.dart) và [settings_screen_test.dart](test/settings_screen_test.dart).
+
+- Đã thêm test hồi quy cho analytics không tạo dữ liệu mẫu, đổi ngày, lỗi và retry settlement, tính idempotent của trả thưởng, chuỗi sự kiện foreground/khóa màn hình và draft hạn mức.
+- Bộ test hiện có 132 test đạt, gồm lỗi ghi/đọc phục hồi, retry sau side effect, ghi đồng thời, UsageEvents khi app còn mở, khóa màn hình, đổi ngày và cấp quyền sau khởi động.
+- Đã chạy các ca khóa máy, vượt hạn khi app mở lâu và kết thúc trận khi overlay hiển thị trên Samsung Android 13. Còn cần kiểm tra luồng cấp quyền lần đầu trên thiết bị mới và các OEM/phiên bản khác.
+- Cần kiểm tra trên nhiều phiên bản Android/OEM vì thời điểm UsageStats phát sự kiện có thể khác nhau.
 
 ### 12. Cấu hình ký bản release vẫn dùng khóa debug
 
@@ -143,9 +181,15 @@ Vị trí: [pubspec.yaml](pubspec.yaml), dòng 36; [widget_test.dart](test/widge
 
 Khả năng tinh gọn: bỏ 1 dependency trực tiếp và file test placeholder 7 dòng.
 
-## Thứ tự ưu tiên
+## Thứ tự ưu tiên hiện tại
 
-Ưu tiên xử lý **1 → 2 → 3 → 4 → 5 → 6** trước khi thêm tính năng.
+Tám mục ưu tiên ban đầu đã được xử lý. Công việc còn lại nên theo thứ tự:
+
+1. Mở rộng kiểm thử các luồng UsageStats, khóa màn hình, cảnh báo hạn mức và overlay sang Android/OEM khác và cấp quyền lần đầu.
+2. Sửa đồng hồ dựa trên thời gian thực đã trôi qua.
+3. Lưu thời điểm thực tế của từng phiên tập trung.
+4. Cấu hình khóa ký release trước khi phân phối.
+5. Dọn dependency và test placeholder không dùng.
 
 Chưa có lý do từ mã hiện tại để thay toàn bộ cách quản lý state hoặc thêm framework mới.
 
@@ -158,6 +202,6 @@ Chưa có lý do từ mã hiện tại để thay toàn bộ cách quản lý st
 
 ## Giới hạn kiểm tra và rủi ro
 
-Chưa kiểm tra APK release, hành vi trên điện thoại thật, pin/FPS, từng ảnh/font và từng dòng scaffold native của các nền tảng phụ.
+Chưa kiểm tra APK release, Android/OEM khác, pin/FPS, từng ảnh/font và từng dòng scaffold native của các nền tảng phụ.
 
-Rủi ro chính: lỗi lưu dữ liệu và phạt nhầm vẫn có thể tồn tại dù toàn bộ test hiện tại đạt.
+Các thay đổi đã vượt qua unit/widget test, static analysis và các ca USB nêu trên; không suy rộng một Samsung Android 13 thành mọi thiết bị. SharedPreferences không phải cơ sở dữ liệu giao dịch; cần mở rộng kiểm thử kill tiến trình tại các bước ghi thực tế. Nếu bộ nhớ không thể ghi ngay journal đầu tiên, phần thưởng được giữ trong tiến trình và UI yêu cầu thử lại trước khi đóng ứng dụng; không thể bảo đảm dữ liệu bền vững khi thiết bị hoàn toàn không ghi được.

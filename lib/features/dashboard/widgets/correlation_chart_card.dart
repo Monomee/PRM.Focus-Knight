@@ -1,15 +1,14 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
 import '../services/analytics_service.dart';
 
 /// Card displaying Correlation Analysis between Social Media hours and Focus Goal Completion Rate
 class CorrelationChartCard extends StatelessWidget {
   final List<DayCorrelationData> data;
 
-  const CorrelationChartCard({
-    super.key,
-    required this.data,
-  });
+  const CorrelationChartCard({super.key, required this.data});
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +31,11 @@ class CorrelationChartCard extends StatelessWidget {
                   color: const Color(0xFF8B5CF6).withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(Icons.compare_arrows, size: 16, color: Color(0xFFA78BFA)),
+                child: const Icon(
+                  Icons.compare_arrows,
+                  size: 16,
+                  color: Color(0xFFA78BFA),
+                ),
               ),
               const SizedBox(width: 8),
               const Expanded(
@@ -66,7 +69,10 @@ class CorrelationChartCard extends StatelessWidget {
             children: [
               _buildLegendItem('Lướt MXH (Giờ)', const Color(0xFFEF4444)),
               const SizedBox(width: 16),
-              _buildLegendItem('Hoàn thành mục tiêu (%)', const Color(0xFF10B981)),
+              _buildLegendItem(
+                'Hoàn thành mục tiêu (%)',
+                const Color(0xFF10B981),
+              ),
             ],
           ),
 
@@ -84,7 +90,6 @@ class CorrelationChartCard extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Correlation Rule Insight Box
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -92,15 +97,21 @@ class CorrelationChartCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFF334155)),
             ),
-            child: const Row(
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.insights, size: 16, color: Color(0xFFFFB300)),
-                SizedBox(width: 8),
+                const Icon(Icons.insights, size: 16, color: Color(0xFFFFB300)),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Quy luật nghịch biến: Vào những ngày lướt MXH > 2h, tỉ lệ hoàn thành mục tiêu giảm còn 40%. Duy trì hạn mức MXH dưới 1h giúp tăng tỉ lệ hoàn thành lên 95%!',
-                    style: TextStyle(fontSize: 11, color: Color(0xFFCBD5E1), height: 1.35),
+                    data.any((day) => day.socialHours != null)
+                        ? 'Biểu đồ sử dụng dữ liệu tập trung và thời gian dùng các ứng dụng bị chặn trong 7 ngày gần nhất.'
+                        : 'Chưa có dữ liệu thời gian ứng dụng. Hãy cấp quyền truy cập dữ liệu sử dụng để xem mối tương quan.',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFFCBD5E1),
+                      height: 1.35,
+                    ),
                   ),
                 ),
               ],
@@ -126,7 +137,11 @@ class CorrelationChartCard extends StatelessWidget {
         const SizedBox(width: 5),
         Text(
           label,
-          style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.bold),
+          style: const TextStyle(
+            fontSize: 10,
+            color: Color(0xFF94A3B8),
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ],
     );
@@ -137,8 +152,14 @@ class CorrelationChartCard extends StatelessWidget {
     const maxSocialHours = 4.0; // 4 hours ceiling for scaling
 
     // Heights
-    final socialHeight = math.min(maxBarHeight, (day.socialHours / maxSocialHours) * maxBarHeight);
-    final focusHeight = math.min(maxBarHeight, day.completionRate * maxBarHeight);
+    final socialHeight = math.min(
+      maxBarHeight,
+      ((day.socialHours ?? 0) / maxSocialHours) * maxBarHeight,
+    );
+    final focusHeight = math.min(
+      maxBarHeight,
+      day.completionRate * maxBarHeight,
+    );
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
@@ -151,13 +172,17 @@ class CorrelationChartCard extends StatelessWidget {
             children: [
               // Social Bar (Red)
               Tooltip(
-                message: '${day.dayLabel}: Lướt MXH ${day.socialHours}h',
+                message: day.socialHours == null
+                    ? '${day.dayLabel}: Chưa có quyền truy cập dữ liệu sử dụng'
+                    : '${day.dayLabel}: Lướt MXH ${day.socialHours}h',
                 child: Container(
                   width: 10,
                   height: math.max(4.0, socialHeight),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEF4444),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(3),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFFEF4444).withValues(alpha: 0.3),
@@ -171,13 +196,16 @@ class CorrelationChartCard extends StatelessWidget {
               const SizedBox(width: 4),
               // Focus Completion Bar (Green)
               Tooltip(
-                message: '${day.dayLabel}: Hoàn thành ${(day.completionRate * 100).toInt()}%',
+                message:
+                    '${day.dayLabel}: Hoàn thành ${(day.completionRate * 100).toInt()}%',
                 child: Container(
                   width: 10,
                   height: math.max(4.0, focusHeight),
                   decoration: BoxDecoration(
                     color: const Color(0xFF10B981),
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(3),
+                    ),
                     boxShadow: [
                       BoxShadow(
                         color: const Color(0xFF10B981).withValues(alpha: 0.3),

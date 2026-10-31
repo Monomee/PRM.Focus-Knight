@@ -7,10 +7,20 @@ import 'package:test_dart/core/game/village.dart';
 import 'package:test_dart/core/widgets/cover_rect.dart';
 import 'package:test_dart/features/village/village_screen.dart';
 
+class _FailingBuildPlayer extends PlayerState {
+  @override
+  Future<bool> build(Building b, Rank current) async =>
+      throw StateError('disk full');
+}
+
 void main() {
   late PlayerState player;
 
-  Future<void> pumpVillage(WidgetTester tester, {required Map<String, Object> prefs, Rank rank = Rank.starter}) async {
+  Future<void> pumpVillage(
+    WidgetTester tester, {
+    required Map<String, Object> prefs,
+    Rank rank = Rank.starter,
+  }) async {
     tester.view.physicalSize = const Size(400, 860);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -19,9 +29,16 @@ void main() {
       player = PlayerState();
       await player.load();
     });
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: VillageScreen(player: player, totalFocusSeconds: rank.thresholdHours * 3600)),
-    ));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VillageScreen(
+            player: player,
+            totalFocusSeconds: rank.thresholdHours * 3600,
+          ),
+        ),
+      ),
+    );
     await tester.pump();
   }
 
@@ -34,14 +51,46 @@ void main() {
   testWidgets('cannot build without funds', (tester) async {
     await pumpVillage(tester, prefs: {});
     await openSlot(tester, 'tower');
-    final button = tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Xây'));
+    final button = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Xây'),
+    );
     expect(button.onPressed, isNull);
+  });
+
+  testWidgets('failed building save shows an error and enables retry', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(400, 860);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    player = _FailingBuildPlayer()
+      ..coins = 500
+      ..logs = 100;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: VillageScreen(player: player, totalFocusSeconds: 0),
+        ),
+      ),
+    );
+    await openSlot(tester, 'tower');
+    await tester.tap(find.widgetWithText(FilledButton, 'Xây'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.text('Chưa lưu được công trình. Hãy thử lại.'), findsOneWidget);
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Xây'))
+          .onPressed,
+      isNotNull,
+    );
   });
 
   testWidgets('building spends and shows level', (tester) async {
     await pumpVillage(tester, prefs: {'fk_gold': 500, 'fk_logs': 100});
     await openSlot(tester, 'tower');
     await tester.tap(find.widgetWithText(FilledButton, 'Xây'));
+    await tester.runAsync(() => pumpEventQueue());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Tháp canh Lv1'), findsOneWidget);
@@ -59,6 +108,7 @@ void main() {
     final build = find.widgetWithText(FilledButton, 'Xây');
     await tester.tap(build);
     await tester.tap(build, warnIfMissed: false);
+    await tester.runAsync(() => pumpEventQueue());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(player.levelOf(Building.tower), 1);
@@ -73,27 +123,50 @@ void main() {
     expect(r.top, 0);
   });
 
-  test('every slot (sprite + label) stays on screen for tall and short phones', () {
-    for (final box in const [Size(400, 889), Size(400, 700), Size(360, 800)]) {
-      for (final b in Building.values) {
-        final area = VillageScreen.slotArea(b, box);
-        expect(area.left, greaterThanOrEqualTo(0), reason: '$b on $box');
-        expect(area.right, lessThanOrEqualTo(box.width), reason: '$b on $box');
-        expect(area.top, greaterThanOrEqualTo(0), reason: '$b on $box');
+  test(
+    'every slot (sprite + label) stays on screen for tall and short phones',
+    () {
+      for (final box in const [
+        Size(400, 889),
+        Size(400, 700),
+        Size(360, 800),
+      ]) {
+        for (final b in Building.values) {
+          final area = VillageScreen.slotArea(b, box);
+          expect(area.left, greaterThanOrEqualTo(0), reason: '$b on $box');
+          expect(
+            area.right,
+            lessThanOrEqualTo(box.width),
+            reason: '$b on $box',
+          );
+          expect(area.top, greaterThanOrEqualTo(0), reason: '$b on $box');
+        }
       }
-    }
-  });
+    },
+  );
 
   test('slots never overlap each other or the campfire', () {
     for (final box in const [Size(400, 889), Size(400, 700), Size(360, 800)]) {
       final img = coverRect(box, VillageScreen.imageSize);
-      final fire = Rect.fromLTRB(img.left + 0.45 * img.width, img.top + 0.43 * img.height,
-          img.left + 0.55 * img.width, img.top + 0.49 * img.height);
+      final fire = Rect.fromLTRB(
+        img.left + 0.45 * img.width,
+        img.top + 0.43 * img.height,
+        img.left + 0.55 * img.width,
+        img.top + 0.49 * img.height,
+      );
       for (final a in Building.values) {
         final ra = VillageScreen.slotArea(a, box);
-        expect(ra.overlaps(fire), isFalse, reason: '$a covers the campfire on $box');
+        expect(
+          ra.overlaps(fire),
+          isFalse,
+          reason: '$a covers the campfire on $box',
+        );
         for (final b in Building.values.where((b) => b.index > a.index)) {
-          expect(ra.overlaps(VillageScreen.slotArea(b, box)), isFalse, reason: '$a overlaps $b on $box');
+          expect(
+            ra.overlaps(VillageScreen.slotArea(b, box)),
+            isFalse,
+            reason: '$a overlaps $b on $box',
+          );
         }
       }
     }

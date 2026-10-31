@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../../core/game/player_state.dart';
 import '../../core/game/sprites.dart';
 import '../focus_session/focus_session_controller.dart';
@@ -9,7 +10,12 @@ import 'result_view.dart';
 
 /// Full-screen game UI for a battle: Focus → (house destroyed) → Camp → … → Result.
 class BattleScreen extends StatefulWidget {
-  const BattleScreen({super.key, required this.controller, required this.player, this.onOpenVillage});
+  const BattleScreen({
+    super.key,
+    required this.controller,
+    required this.player,
+    this.onOpenVillage,
+  });
 
   final FocusSessionController controller;
   final PlayerState player;
@@ -38,7 +44,8 @@ class _BattleScreenState extends State<BattleScreen> {
 
   void _onController() {
     final c = widget.controller;
-    final sessionWon = _lastPhase == SessionPhase.focus &&
+    final sessionWon =
+        _lastPhase == SessionPhase.focus &&
         (c.isResting || (c.isSetup && (c.lastResult?.won ?? false)));
     _lastPhase = c.phase;
     // The session ended (time up or defeat) while the mindful dialog was open: close it.
@@ -64,7 +71,9 @@ class _BattleScreenState extends State<BattleScreen> {
         onConfirmAbandon: (reason) {
           Navigator.of(ctx).pop();
           // Only a focus session can be abandoned from here; never forfeit a rest break.
-          if (widget.controller.isFocusing) widget.controller.forceAbandonSession(reason: reason);
+          if (widget.controller.isFocusing) {
+            widget.controller.forceAbandonSession(reason: reason);
+          }
         },
         onResumeFocus: () => Navigator.of(ctx).pop(),
       ),
@@ -85,9 +94,18 @@ class _BattleScreenState extends State<BattleScreen> {
         onGiveUp: () => c.forceAbandonSession(reason: 'Giữ nút bỏ cuộc'),
       );
     } else if (c.isResting) {
-      body = CampView(controller: c, hero: hero, onOpenVillage: widget.onOpenVillage);
+      body = CampView(
+        controller: c,
+        hero: hero,
+        onOpenVillage: widget.onOpenVillage,
+      );
     } else if (c.lastResult != null) {
-      body = ResultView(result: c.lastResult!, onDone: () => Navigator.of(context).maybePop());
+      body = ResultView(
+        result: c.lastResult!,
+        onDone: () => Navigator.of(context).maybePop(),
+        isSaving: c.isSettling,
+        onRetry: c.settlementFailed ? c.retrySettlement : null,
+      );
     } else {
       body = const SizedBox.shrink();
     }
