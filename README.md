@@ -92,6 +92,22 @@ flutter analyze
 flutter test
 ```
 
+## Ký bản phát hành Android
+
+Bản release dùng khóa riêng, đọc từ `android/key.properties`; thiếu khóa sẽ báo lỗi thay vì ký bằng khóa debug. Bản debug không cần cấu hình này.
+
+1. Nếu chưa có khóa, tạo upload keystore bằng `keytool` của JDK/Android Studio (PowerShell):
+
+   ```powershell
+   keytool -genkeypair -v -keystore "$env:USERPROFILE\focusknight-upload.jks" -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload
+   ```
+
+2. Sao chép `android/key.properties.example` thành `android/key.properties`, điền đường dẫn keystore, alias và mật khẩu. Đường dẫn tương đối tính từ `android/`; trên Windows dùng dấu `/` hoặc `\\` trong file properties.
+3. Sao lưu keystore và mật khẩu ở nơi riêng an toàn. `key.properties`, `*.jks` và `*.keystore` trong `android/` đã bị loại khỏi Git; nên giữ keystore bên ngoài project.
+4. Chạy `flutter build appbundle --release` hoặc `flutter build apk --release`.
+
+Không thay khóa của bản đã phân phối nếu chưa có kế hoạch chuyển khóa; Android cần chữ ký tương thích để cập nhật ứng dụng. Hướng dẫn gốc: [ký bản phát hành Flutter Android](https://docs.flutter.dev/deployment/android#sign-the-app).
+
 ## Tài liệu dự án
 
 - [Cấu trúc dự án](STRUCTURE.md): thư mục, vai trò các module và luồng xử lý chính.

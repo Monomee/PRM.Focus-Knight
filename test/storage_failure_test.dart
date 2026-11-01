@@ -61,6 +61,41 @@ void main() {
   });
 
   test(
+    'timestamped settlement retry after midnight preserves original allocation',
+    () async {
+      var now = DateTime(2026, 10, 30, 23, 59, 50);
+      final player = PlayerState();
+      await player.load();
+      final history = FocusHistoryService(clock: () => now);
+      await history.loadData();
+      final controller = FocusSessionController(
+        player: player,
+        history: history,
+        clock: () => now,
+      );
+      addTearDown(controller.dispose);
+      failJournalWrite = 2; // History saved, journal progress not yet saved.
+      controller.startFocusSession(task: 'Retry', durationSeconds: 20);
+      now = now.add(const Duration(seconds: 20));
+      controller.refreshTimer();
+      await pumpEventQueue();
+      expect(controller.settlementFailed, isTrue);
+      expect(disk['flutter.${Settlement.key}'], isNotNull);
+
+      now = DateTime(2026, 11, 1);
+      await controller.retrySettlement();
+      expect(controller.hasPendingSettlement, isFalse);
+      expect(history.totalFocusSecondsAllTime, 20);
+      expect(history.todayFocusSeconds, 0);
+      expect(await history.getFocusSecondsForDate(DateTime(2026, 10, 30)), 10);
+      expect(await history.getFocusSecondsForDate(DateTime(2026, 10, 31)), 10);
+      expect(await history.getSessionCountForDate(DateTime(2026, 10, 31)), 1);
+      expect(await history.getFocusSecondsForDate(DateTime(2026, 11, 1)), 0);
+      expect(disk['flutter.${Settlement.key}'], isNull);
+    },
+  );
+
+  test(
     'failed wallet write retries once without losing the reward to cache',
     () async {
       final player = PlayerState();

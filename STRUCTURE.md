@@ -103,8 +103,8 @@ lib/
 
 1. **Khởi động:** `main.dart` nạp người chơi và lịch sử, xử lý khoản trả thưởng còn dở, kiểm tra vé giữ chuỗi. Giao diện `AppShell` được dựng trong khi dữ liệu nạp bất đồng bộ.
 2. **Bắt đầu trận:** `HomeScreen` → `openBattle()` → form thiết lập → `FocusSessionController.startFocusSession()` → `BattleScreen`.
-3. **Chạy trận:** Controller cập nhật đồng hồ và trạng thái; giao diện chuyển giữa `FocusView`, `CampView` và `ResultView`. Phần thưởng từng phiên được giữ trong quỹ trận.
-4. **Hoàn thành trận:** Controller gọi `Settlement` để ghi lịch sử qua `FocusHistoryService` và cộng tài nguyên vào `PlayerState`.
+3. **Chạy trận:** Controller tính thời gian còn lại từ hạn kết thúc, bù các giai đoạn đã trôi qua khi callback trễ; giao diện chuyển giữa `FocusView`, `CampView` và `ResultView`. Quỹ trận giữ phần thưởng và các khoảng tập trung thực tế, loại trừ pause.
+4. **Hoàn thành trận:** Controller gọi `Settlement` để lưu journal gồm timestamp từng khoảng tập trung, ghi lịch sử qua `FocusHistoryService` theo ngày/giờ thực tế và cộng tài nguyên vào `PlayerState`. Số phiên được đếm vào ngày hoàn thành; retry không đổi timestamp hoặc cộng trùng.
 5. **Chống xao nhãng:** Bộ theo dõi vòng đời trong `main.dart` truy vấn `ScreenTimeTracker`, chuyển kết quả cho `DistractionGuard`; guard gọi controller để phạt và service để hiển thị overlay/cảnh báo.
 6. **Overlay:** `OverlayService` gửi dữ liệu qua `FlutterOverlayWindow.shareData`; widget trong isolate riêng nhận qua `overlayListener`, không đọc trực tiếp controller.
 
@@ -131,6 +131,7 @@ Dữ liệu được lưu cục bộ bằng SharedPreferences. Các nhóm khóa 
 - [MainActivity.kt](android/app/src/main/kotlin/com/example/test_dart/MainActivity.kt): xử lý MethodChannel thông báo, tạo kênh cảnh báo và thông báo có thể mở lại ứng dụng.
 - [AndroidManifest.xml](android/app/src/main/AndroidManifest.xml): khai báo quyền usage stats, overlay, notification, wake lock và foreground service.
 - [build.gradle.kts](android/app/build.gradle.kts): cấu hình ứng dụng Android và build.
+- [key.properties.example](android/key.properties.example): mẫu cấu hình khóa release; bản thật `key.properties` và keystore được giữ ngoài Git. Debug không cần khóa release; release thiếu cấu hình sẽ bị chặn.
 
 Các plugin chính là `usage_stats`, `flutter_foreground_task`, `flutter_overlay_window` và `shared_preferences`.
 

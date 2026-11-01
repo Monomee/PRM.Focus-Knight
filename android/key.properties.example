@@ -1,0 +1,6 @@
+# Copy to key.properties (ignored by Git) and replace these example values.
+# Absolute paths or paths relative to android/ are accepted. Use / on Windows.
+storeFile=C:/Users/YOUR_USER/FocusKnight/upload-keystore.jks
+storePassword=REPLACE_WITH_PRIVATE_PASSWORD
+keyAlias=upload
+keyPassword=REPLACE_WITH_PRIVATE_PASSWORD

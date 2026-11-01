@@ -44,6 +44,7 @@ class _UnavailableHistory extends FocusHistoryService {
   Future<void> recordCompletedSession(
     int durationSeconds, {
     String? settlementId,
+    List<FocusInterval>? intervals,
   }) async {
     throw StateError('storage unavailable');
   }
