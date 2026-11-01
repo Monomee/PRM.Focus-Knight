@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import 'core/constants/blacklist_constants.dart';
 import 'core/services/foreground_task_service.dart';
@@ -108,6 +109,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
 
   void _handleBattleState() {
     final inBattle = _sessionController.inBattle;
+    ForegroundTaskService.sendBattleState(inBattle);
     if (_wasInBattle && !inBattle) {
       _guard.reset();
       final defeated = _sessionController.lastResult?.won == false;
@@ -144,6 +146,20 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     _sessionController.addListener(_handleBattleState);
     _screenTimeTracker = ScreenTimeTracker();
     _overlayService = OverlayService();
+    _screenTimeTracker.addListener(_syncMonitoring);
+    FlutterForegroundTask.addTaskDataCallback(_onTaskData);
+  }
+
+  void _syncMonitoring() {
+    if (_screenTimeTracker.hasPermission && _overlayService.isAppInForeground) {
+      unawaited(ForegroundTaskService.ensureMonitoring());
+    }
+  }
+
+  void _onTaskData(Object data) {
+    if (data == 'monitorReady') {
+      ForegroundTaskService.sendBattleState(_sessionController.inBattle);
+    }
   }
 
   Future<void> _initProgress() async {
@@ -195,18 +211,6 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
         }
         return;
       }
-      final blacklistedPkg = await _screenTimeTracker
-          .getActiveBlacklistedPackage();
-      if (_overlayService.isAppInForeground) return;
-      if (blacklistedPkg != null &&
-          _screenTimeTracker.isAppLimitExceeded(blacklistedPkg)) {
-        ForegroundTaskService.notifyAppLimitExceeded(
-          appName:
-              BlacklistConstants.appNames[blacklistedPkg] ?? blacklistedPkg,
-          packageName: blacklistedPkg,
-          limitMinutes: _screenTimeTracker.getAppLimit(blacklistedPkg),
-        );
-      }
     } finally {
       _distractionCheckRunning = false;
     }
@@ -256,6 +260,8 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     _player.dispose();
     _sessionController.removeListener(_handleBattleState);
     _sessionController.dispose();
+    FlutterForegroundTask.removeTaskDataCallback(_onTaskData);
+    _screenTimeTracker.removeListener(_syncMonitoring);
     _screenTimeTracker.dispose();
     _overlayService.dispose();
     super.dispose();

@@ -47,6 +47,16 @@ Mở tab **Cài đặt**:
 
 Quyền truy cập sử dụng phục vụ theo dõi thời gian và phát hiện app gây xao nhãng. Quyền overlay phục vụ màn hình nhắc quay lại trận.
 
+### Strict mode cho hạn mức hằng ngày
+
+Trong **Cài đặt**, bật **Strict mode** để che toàn màn hình ứng dụng mạng xã hội đã hết hạn mức, đồng thời vẫn gửi thông báo. Overlay hiển thị tên ứng dụng, hạn mức và nút **Quay lại FocusKnight**. Tắt Strict mode thì chỉ gửi thông báo; lựa chọn được lưu cho lần mở sau. Mặc định chế độ này tắt.
+
+Cần cấp quyền **Truy cập Sử dụng**, **Overlay** và cho phép thông báo trong Android. Nếu chưa cấp quyền overlay, ứng dụng yêu cầu cấp quyền trước khi bật; nếu quyền bị thu hồi, Cài đặt hiển thị cảnh báo. Overlay tự đóng khi rời app quá hạn, khóa màn hình, quay lại FocusKnight hoặc hạn mức không còn bị vượt. Hạn mức riêng từng ứng dụng được ưu tiên; ứng dụng chưa đặt riêng dùng giá trị mặc định chung.
+
+Strict mode chỉ áp dụng ngoài trận Pomodoro; overlay, ân hạn và hình phạt trong trận giữ nguyên. Khi đã cấp quyền sử dụng, service nền có thông báo thường trực sẽ kiểm tra khoảng mỗi 2 giây, kể cả khi đóng giao diện hoặc vuốt FocusKnight khỏi ứng dụng gần đây. Service dùng worker riêng, được cấu hình tự khôi phục khi Android khởi động lại service, sau khởi động máy và sau cập nhật ứng dụng; không cần mở lại giao diện để xử lý hạn mức. Cài đặt được nạp lại giữa các worker nên thay đổi hạn mức và công tắc vẫn có hiệu lực.
+
+Nút **Buộc dừng**, thao tác **Dừng** trong trình quản lý ứng dụng đang chạy hoặc hạn chế pin của hãng có thể ngăn giám sát; khi đó cần mở FocusKnight lại. Đây không phải chế độ khóa quản trị thiết bị. Việc chạy nền cần thông báo thường trực và có sử dụng pin; chưa nghiệm thu mọi hãng máy hoặc khởi động lại điện thoại.
+
 ### 2. Thiết lập trận
 
 Tại **Trang chủ**, bấm **BẮT ĐẦU**:

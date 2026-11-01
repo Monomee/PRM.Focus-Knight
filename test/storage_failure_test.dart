@@ -9,6 +9,7 @@ import 'package:test_dart/core/game/village.dart';
 import 'package:test_dart/features/dashboard/services/focus_history_service.dart';
 import 'package:test_dart/features/focus_session/focus_session_controller.dart';
 import 'package:test_dart/features/focus_session/settlement.dart';
+import 'package:test_dart/features/telemetry/screen_time_tracker.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +59,21 @@ void main() {
     SharedPreferences.resetStatic();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
+  });
+
+  test('strict mode save failure does not enable it or reload a failed cache value', () async {
+    final tracker = ScreenTimeTracker();
+    addTearDown(tracker.dispose);
+    await tracker.init();
+    failKey = 'flutter.fk_strict_mode';
+    await expectLater(tracker.setStrictModeEnabled(true), throwsStateError);
+    expect(tracker.strictModeEnabled, isFalse);
+    final restored = ScreenTimeTracker();
+    addTearDown(restored.dispose);
+    await restored.init();
+    expect(restored.strictModeEnabled, isFalse);
+    await tracker.setStrictModeEnabled(true);
+    expect(tracker.strictModeEnabled, isTrue);
   });
 
   test(

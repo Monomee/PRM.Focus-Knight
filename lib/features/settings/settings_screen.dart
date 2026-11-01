@@ -30,6 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late int _syncedDailyLimit;
   bool _limitIsDirty = false;
   int _longRestMinutes = 15;
+  bool _savingStrictMode = false;
 
   @override
   void initState() {
@@ -103,6 +104,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: Color(0xFF7F1D1D),
         ),
       );
+    }
+  }
+
+  Future<void> _setStrictMode(bool enabled) async {
+    if (_savingStrictMode) return;
+    setState(() => _savingStrictMode = true);
+    try {
+      if (enabled && !await widget.overlayService.checkPermission()) {
+        await widget.overlayService.requestPermission();
+        if (!mounted) return;
+        if (!widget.overlayService.hasPermission) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cần cấp quyền Overlay để bật Strict mode.'),
+            ),
+          );
+          return;
+        }
+      }
+      await widget.screenTimeTracker.setStrictModeEnabled(enabled);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Chưa lưu được Strict mode. Hãy thử lại.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _savingStrictMode = false);
     }
   }
 
@@ -691,8 +722,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             }),
 
             const SizedBox(height: 8),
+            Material(
+              color: Colors.transparent,
+              child: SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text(
+                  'Strict mode',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  'Che ứng dụng đã hết hạn mức hằng ngày bằng overlay. Tắt: chỉ thông báo. Không thay đổi chế độ trong trận.',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                ),
+                value: tracker.strictModeEnabled,
+                onChanged: _savingStrictMode ? null : _setStrictMode,
+              ),
+            ),
+            if (tracker.strictModeEnabled &&
+                !widget.overlayService.hasPermission)
+              const Text(
+                'Strict mode chưa thể chặn: cần cấp lại quyền Overlay.',
+                style: TextStyle(fontSize: 11, color: Color(0xFFF59E0B)),
+              ),
             const Text(
-              '💡 Khi dùng quá hạn mức, hệ thống sẽ gửi thông báo đẩy (popup) nhắc nhở nghỉ ngơi.',
+              'Thông báo cần được cho phép trong cài đặt Android. Overlay cần quyền hiển thị trên ứng dụng khác.',
               style: TextStyle(
                 fontSize: 10,
                 color: Color(0xFF64748B),

@@ -74,7 +74,7 @@ lib/
 | `game/village.dart` | Loại công trình, tác dụng, cấp tối đa và chi phí xây/nâng cấp. |
 | `services/alert_notifier.dart` | Gọi Android qua MethodChannel `focusknight/alerts` để hiển thị thông báo cảnh báo. |
 | `services/distraction_guard.dart` | Quản lý ân hạn, lần phạt HP và nhịp trừ Coin khi dùng app bị chặn. |
-| `services/foreground_task_service.dart` | Khởi động/dừng foreground service và cập nhật thông báo phiên. |
+| `services/foreground_task_service.dart` | Giám sát hạn mức trong worker nền độc lập với giao diện, duy trì foreground service, phối hợp heartbeat trận và cập nhật thông báo phiên. |
 | `services/overlay_service.dart` | Kiểm tra quyền, mở/đóng overlay và gửi trạng thái trận sang overlay. |
 | `services/persistent_preferences.dart` | Không tin cache sau lỗi ghi cho đến khi đọc lại thành công; dùng chung cho ví, lịch sử và journal. |
 | `widgets/cover_rect.dart` | Tính vùng ảnh theo cách hiển thị cover. |
