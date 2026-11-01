@@ -23,26 +23,24 @@ void main() {
     );
   });
 
-  group('ScreenTimeTracker Daily Limit Logic', () {
-    setUp(() {
-      SharedPreferences.setMockInitialValues({'fk_daily_limit_minutes': 45});
+  test('apps without a custom limit use 30 minutes and ignore the old global setting', () async {
+    SharedPreferences.setMockInitialValues({
+      'fk_daily_limit_minutes': 120,
+      'fk_app_limit_com.facebook.katana': 86,
     });
-
-    test(
-      'Initializes with persisted limit and calculates limit getters correctly',
-      () async {
-        final tracker = ScreenTimeTracker();
-        await tracker.init();
-
-        expect(tracker.dailyLimitMinutes, 45);
-        expect(tracker.isLimitExceeded, isFalse);
-        expect(tracker.limitProgress, 0.0);
-        expect(tracker.remainingTime.inMinutes, 45);
-
-        await tracker.setDailyLimitMinutes(90);
-        expect(tracker.dailyLimitMinutes, 90);
-        expect(tracker.remainingTime.inMinutes, 90);
-      },
-    );
+    final tracker = ScreenTimeTracker();
+    addTearDown(tracker.dispose);
+    await tracker.ready;
+    expect(tracker.getAppLimit('com.facebook.katana'), 86);
+    expect(tracker.getAppLimit('com.instagram.android'), 30);
+    await tracker.setTrackedApps({'com.example.reader': 'Reader'});
+    expect(tracker.getAppLimit('com.example.reader'), 30);
+    await tracker.setAppLimit('com.example.reader', 75);
+    final restored = ScreenTimeTracker();
+    addTearDown(restored.dispose);
+    await restored.ready;
+    expect(restored.getAppLimit('com.example.reader'), 75);
+    await restored.reloadLimits();
+    expect(restored.getAppLimit('com.example.reader'), 75);
   });
 }

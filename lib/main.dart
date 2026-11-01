@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
-import 'core/constants/blacklist_constants.dart';
 import 'core/services/foreground_task_service.dart';
 import 'core/services/overlay_service.dart';
 import 'features/shell/app_shell.dart';
@@ -88,7 +87,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       _sessionController.applyBlacklistPenalty();
       _overlayService.showBlockerOverlay(
         reason:
-            '${BlacklistConstants.appNames[pkg] ?? pkg} bị chặn trong lúc tập trung!',
+            '${_screenTimeTracker.appNameFor(pkg)} bị chặn trong lúc tập trung!',
       );
       _pushOverlayState(pkg);
     },
@@ -98,7 +97,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     },
     onLeftBlacklisted: _overlayService.closeBlockerOverlay,
     onGraceStart: (pkg) => AlertNotifier.show(
-      '⚠️ Đang mở ${BlacklistConstants.appNames[pkg] ?? pkg}',
+      '⚠️ Đang mở ${_screenTimeTracker.appNameFor(pkg)}',
       'Quay lại FocusKnight trong ${graceSecondsFor(_player.levelOf(Building.tower))} giây để không mất $kPenaltyHp HP.',
       id: AlertNotifier.violation,
     ),
@@ -106,6 +105,8 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   String? _blockedPkg;
   bool _interruptionCounted = false;
   bool _wasInBattle = false;
+  bool _progressReady = false;
+  bool _progressFailed = false;
 
   void _handleBattleState() {
     final inBattle = _sessionController.inBattle;
@@ -125,7 +126,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   void _pushOverlayState(String? pkg) {
     _blockedPkg = pkg ?? _blockedPkg;
     _overlayService.pushState(
-      appName: BlacklistConstants.appNames[_blockedPkg] ?? _blockedPkg ?? '',
+      appName: _screenTimeTracker.appNameFor(_blockedPkg),
       heroHp: _sessionController.heroHp,
       pendingCoins: _sessionController.pendingCoins,
       defeated:
@@ -163,12 +164,21 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   }
 
   Future<void> _initProgress() async {
-    await _player.load();
-    final history = FocusHistoryService.instance;
-    await history.loadData();
-    // Finish a battle payout that was cut short by the app being killed.
-    await Settlement.resume(_player, history);
-    await _refreshStreakShield();
+    if (mounted) setState(() => _progressFailed = false);
+    try {
+      await _player.load();
+      final history = FocusHistoryService.instance;
+      await history.loadData();
+      // Finish a battle payout that was cut short by the app being killed.
+      await Settlement.resume(_player, history);
+      await _player.abandonUnfinishedConstructions();
+      await _refreshStreakShield();
+      _progressReady = true;
+    } catch (_) {
+      _progressFailed = true;
+    } finally {
+      if (mounted) setState(() {});
+    }
   }
 
   /// Weekly granary ticket, then use it to cover a missed day if needed. Idempotent.
@@ -200,7 +210,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
         }
         if (_sessionController.isFocusing) {
           _guard.tick(
-            BlacklistConstants.defaultBlacklist.contains(fg) ? fg : null,
+            _screenTimeTracker.isTrackedPackage(fg) ? fg : null,
             DateTime.now(),
           );
         } else {
@@ -269,6 +279,24 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
 
   @override
   Widget build(BuildContext context) {
+    if (!_progressReady) {
+      return Scaffold(
+        body: Center(
+          child: _progressFailed
+              ? Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Chưa tải được tiến độ. Hãy thử lại.'),
+                    FilledButton(
+                      onPressed: _initProgress,
+                      child: const Text('Thử lại'),
+                    ),
+                  ],
+                )
+              : const CircularProgressIndicator(),
+        ),
+      );
+    }
     return AppShell(
       controller: _sessionController,
       player: _player,

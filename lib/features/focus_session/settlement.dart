@@ -26,6 +26,7 @@ class Settlement {
     required FocusHistoryService history,
     String? settlementId,
     List<List<FocusInterval>>? sessionIntervals,
+    String? constructionId,
   }) {
     if (sessionIntervals != null &&
         sessionIntervals.length != sessionSeconds.length) {
@@ -43,6 +44,7 @@ class Settlement {
           'coins': coins,
           'logs': logs,
           'seconds': sessionSeconds,
+          'constructionId': ?constructionId,
           if (sessionIntervals != null)
             'intervals': [
               for (final session in sessionIntervals)
@@ -110,6 +112,10 @@ class Settlement {
         );
         settlement['deposited'] = true;
         await _writeQueue(prefs, queue);
+      }
+      final constructionId = settlement['constructionId'] as String?;
+      if (constructionId != null) {
+        await player.finishConstruction(constructionId, won: true);
       }
       queue.removeAt(0);
       await _writeQueue(prefs, queue);

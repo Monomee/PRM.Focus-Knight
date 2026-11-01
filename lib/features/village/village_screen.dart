@@ -1,158 +1,191 @@
 import 'package:flutter/material.dart';
+
 import '../../core/game/player_state.dart';
 import '../../core/game/progression.dart';
 import '../../core/game/village.dart';
-import '../../core/widgets/cover_rect.dart';
 import '../../core/widgets/sprite_anim.dart';
 import '../battle/camp_view.dart';
 import 'building_sheet.dart';
 
-/// Village map: one fixed slot per building, placed in image space on `village.webp`
-/// so slots stay on the grass whatever the phone's aspect ratio crops away.
-class VillageScreen extends StatelessWidget {
-  const VillageScreen({super.key, required this.player, required this.totalFocusSeconds});
-
+class VillageScreen extends StatefulWidget {
+  const VillageScreen({
+    super.key,
+    required this.player,
+    required this.totalFocusSeconds,
+  });
   final PlayerState player;
   final int totalFocusSeconds;
+  @override
+  State<VillageScreen> createState() => _VillageScreenState();
+}
 
-  static const imageSize = Size(1080, 1920);
-
-  /// Space under each sprite for the name and lock lines, and the minimum column width.
-  static const labelBand = 40.0;
-  static const labelWidth = 100.0;
-
-  // (left, top, width) as fractions of the background image; grass spans ~x 0.06–0.94, y 0.22–0.80,
-  // campfire at ~(0.5, 0.46). Label columns are centered at x ~0.21–0.78 so they survive the side crop
-  // of tall phones.
-  static const _slots = <Building, (double, double, double)>{
-    Building.tower: (0.155, 0.23, 0.12),
-    Building.castle: (0.35, 0.23, 0.30),
-    Building.barracks: (0.69, 0.23, 0.18),
-    Building.granary: (0.145, 0.43, 0.14),
-    Building.archery: (0.68, 0.43, 0.18),
-    Building.house2: (0.145, 0.63, 0.14),
-    Building.monastery: (0.41, 0.555, 0.18),
-    Building.house3: (0.69, 0.63, 0.14),
-  };
-
-
-  /// Sprite width / height (the Tiny Swords building sheets).
-  static const _aspect = <Building, double>{
-    Building.tower: 128 / 256,
-    Building.castle: 320 / 256,
-    Building.barracks: 192 / 256,
-    Building.granary: 128 / 192,
-    Building.archery: 192 / 256,
-    Building.house2: 128 / 192,
-    Building.monastery: 192 / 320,
-    Building.house3: 128 / 192,
-  };
-
-  /// Whole footprint of a slot: the sprite plus the (possibly wider) label column under it.
-  static Rect slotArea(Building b, Size box) {
-    final r = slotRect(b, box);
-    final width = r.width > labelWidth ? r.width : labelWidth;
-    return Rect.fromLTWH(r.center.dx - width / 2, r.top, width, r.height + labelBand);
-  }
-
-  /// Sprite rect of a slot in [box] coordinates; the label band sits below it.
-  static Rect slotRect(Building b, Size box) {
-    final img = coverRect(box, imageSize);
-    final (l, t, w) = _slots[b]!;
-    final width = w * img.width;
-    return Rect.fromLTWH(img.left + l * img.width, img.top + t * img.height, width, width / _aspect[b]!);
-  }
+class _VillageScreenState extends State<VillageScreen> {
+  int _page = 0;
+  static const _columns = 5;
+  static const _rows = 3;
+  static const _pageSize = _columns * _rows;
 
   @override
-  Widget build(BuildContext context) {
-    final rank = rankForSeconds(totalFocusSeconds);
-    return ListenableBuilder(
-      listenable: player,
-      builder: (context, _) => LayoutBuilder(builder: (context, box) {
-        return Stack(children: [
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.player,
+    builder: (context, _) {
+      final plots = widget.player.plots;
+      final pages = plots.length ~/ _pageSize + 1;
+      final rank = rankForSeconds(widget.totalFocusSeconds);
+      return Stack(
+        children: [
           Positioned.fill(
-            child: Image.asset('ui/scenes/village.webp', fit: BoxFit.cover, filterQuality: FilterQuality.none),
-          ),
-          for (final b in _slots.keys) _positioned(context, b, rank, box.biggest),
-          Positioned(
-            left: 12,
-            right: 12,
-            top: 10,
-            child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Flexible(
-                child: _tag(Text('Làng của bạn',
-                    style: woodText(16, color: Colors.white), maxLines: 1, overflow: TextOverflow.ellipsis)),
-              ),
-              const SizedBox(width: 8),
-              _tag(Row(mainAxisSize: MainAxisSize.min, children: [
-                const PixelIcon('coin', size: 20),
-                Text(' ${player.coins}  ', style: woodText(13, color: Colors.white)),
-                const PixelIcon('log', size: 20),
-                Text(' ${player.logs}', style: woodText(13, color: Colors.white)),
-              ])),
-            ]),
-          ),
-        ]);
-      }),
-    );
-  }
-
-  Widget _tag(Widget child) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        decoration: BoxDecoration(color: const Color(0x99000000), borderRadius: BorderRadius.circular(6)),
-        child: child,
-      );
-
-  Widget _positioned(BuildContext context, Building b, Rank rank, Size box) {
-    final area = slotArea(b, box);
-    return Positioned(
-      left: area.left,
-      top: area.top,
-      width: area.width,
-      child: _slot(context, b, rank, slotRect(b, box).size),
-    );
-  }
-
-  Widget _slot(BuildContext context, Building b, Rank rank, Size sprite) {
-    final level = player.levelOf(b);
-    final required = b.requiredCharacter;
-    final locked = required != null && !isCharacterUnlocked(required, rank);
-    final label = TextStyle(
-      fontFamily: kPixelFont,
-      fontSize: 11,
-      color: Colors.white,
-      shadows: const [Shadow(offset: Offset(1, 1), color: Colors.black)],
-    );
-
-    return GestureDetector(
-      key: Key('slot-${b.name}'),
-      onTap: () => showBuildingSheet(context, player: player, building: b, rank: rank),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (level > 0)
-          Image.asset(b.asset,
-              width: sprite.width, height: sprite.height, fit: BoxFit.contain, filterQuality: FilterQuality.none)
-        else
-          SizedBox.fromSize(
-            size: sprite,
-            child: Container(
-              decoration: BoxDecoration(
-                color: const Color(0x33000000),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0x99FFFFFF), width: 2),
-              ),
-              alignment: Alignment.center,
-              child: Opacity(opacity: locked ? 0.4 : 0.9, child: const PixelIcon('hammer', size: 28)),
+            child: Image.asset(
+              'ui/scenes/village.webp',
+              fit: BoxFit.cover,
+              filterQuality: FilterQuality.none,
             ),
           ),
-        Container(
-          margin: const EdgeInsets.only(top: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(color: const Color(0xAA000000), borderRadius: BorderRadius.circular(3)),
-          child: Text(level > 0 ? '${b.label} Lv$level' : b.label,
-              style: label, textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis),
-        ),
-        if (locked) Text('🔒 ${required.unlockRank.label}', style: label),
-      ]),
+          Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xBB0B0E14),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text('Làng của bạn', style: woodText(18)),
+                      ),
+                      const PixelIcon('coin', size: 20),
+                      Text(' ${widget.player.coins}  ', style: woodText(13)),
+                      const PixelIcon('log', size: 20),
+                      Text(' ${widget.player.logs}', style: woodText(13)),
+                    ],
+                  ),
+                ),
+              ),
+              Expanded(
+                flex: 3,
+                child: GestureDetector(
+                  key: const Key('castle'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => showCastleSheet(
+                    context,
+                    player: widget.player,
+                    rank: rank,
+                  ),
+                  child: Semantics(
+                    button: true,
+                    label: 'Castle, mở nâng cấp nhà chính',
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: Image.asset(
+                            Building.castle.asset,
+                            width: 260,
+                            fit: BoxFit.contain,
+                            filterQuality: FilterQuality.none,
+                          ),
+                        ),
+                        Text('CASTLE · ${rank.label}', style: woodText(18)),
+                        Text('Chạm để nâng cấp', style: woodText(12)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                flex: 5,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: LayoutBuilder(
+                    builder: (context, box) => GridView.builder(
+                      padding: EdgeInsets.zero,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _columns,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
+                        // Preserve the original four-row spacing when hiding the last row.
+                        mainAxisExtent: (box.maxHeight - 8 * 3) / 4,
+                      ),
+                      itemCount: _pageSize,
+                      itemBuilder: (context, index) {
+                        final position = _page * _pageSize + index;
+                        return _plot(
+                          position < plots.length ? plots[position] : null,
+                          position,
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    key: const Key('map-prev'),
+                    tooltip: 'Mảnh đất trước',
+                    onPressed: _page == 0
+                        ? null
+                        : () => setState(() => _page--),
+                    icon: const Icon(Icons.chevron_left),
+                  ),
+                  Text('Mảnh đất ${_page + 1} / $pages', style: woodText(16)),
+                  IconButton(
+                    key: const Key('map-next'),
+                    tooltip: 'Mảnh đất tiếp theo',
+                    onPressed: _page + 1 >= pages
+                        ? null
+                        : () => setState(() => _page++),
+                    icon: const Icon(Icons.chevron_right),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
+
+  Widget _plot(VillagePlot? plot, int position) {
+    final state = plot == null
+        ? 'Ô trống'
+        : switch (plot.state) {
+            PlotState.building => 'Đang xây',
+            PlotState.complete => plot.building.label,
+            PlotState.ruined => 'Đổ nát',
+          };
+    final tile = Container(
+      key: plot == null ? Key('empty-plot-$position') : Key('plot-${plot.id}'),
+      padding: const EdgeInsets.all(6),
+      decoration: plot == null
+          ? BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: kWoodBorder),
+            )
+          : null,
+      child: plot == null
+          ? const Center(child: Icon(Icons.add, color: Color(0xFF6B4F2A)))
+          : Semantics(
+              label: state,
+              child: Opacity(
+                opacity: plot.state == PlotState.building ? .45 : 1,
+                child: Image.asset(
+                  plot.asset,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.none,
+                ),
+              ),
+            ),
+    );
+    if (plot == null) return tile;
+    return Tooltip(
+      message: '${plot.task} · ${plot.focusMinutes} phút\n$state',
+      child: tile,
     );
   }
 }

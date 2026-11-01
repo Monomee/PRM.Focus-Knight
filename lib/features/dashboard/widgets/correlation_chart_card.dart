@@ -52,7 +52,7 @@ class CorrelationChartCard extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      'Số giờ lướt MXH so với Tỉ lệ hoàn thành mục tiêu 7 ngày qua',
+                      'Giờ dùng app đã chọn so với Tỉ lệ hoàn thành mục tiêu 7 ngày qua',
                       style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
                     ),
                   ],
@@ -67,7 +67,7 @@ class CorrelationChartCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _buildLegendItem('Lướt MXH (Giờ)', const Color(0xFFEF4444)),
+              _buildLegendItem('App đã chọn (Giờ)', const Color(0xFFEF4444)),
               const SizedBox(width: 16),
               _buildLegendItem(
                 'Hoàn thành mục tiêu (%)',
@@ -174,7 +174,7 @@ class CorrelationChartCard extends StatelessWidget {
               Tooltip(
                 message: day.socialHours == null
                     ? '${day.dayLabel}: Chưa có quyền truy cập dữ liệu sử dụng'
-                    : '${day.dayLabel}: Lướt MXH ${day.socialHours}h',
+                    : '${day.dayLabel}: App đã chọn ${day.socialHours}h',
                 child: Container(
                   width: 10,
                   height: math.max(4.0, socialHeight),

@@ -32,6 +32,10 @@ class PlayerState extends ChangeNotifier {
   DateTime? granaryBuiltAt;
   DateTime? _ticketWeek;
   final Map<Building, int> _levels = {};
+  final List<VillagePlot> _plots = [];
+  List<VillagePlot> get plots => List.unmodifiable(_plots);
+  bool _loaded = false;
+  static int _plotSequence = 0;
   Future<void> _walletSerial = Future.value();
 
   Future<T> _withWallet<T>(Future<T> Function() action) {
@@ -42,7 +46,7 @@ class PlayerState extends ChangeNotifier {
 
   int levelOf(Building b) => _levels[b] ?? 0;
 
-  Future<void> load() async {
+  Future<void> load() => _withWallet(() async {
     final p = await loadPersistentPreferences();
     final walletRaw = p.getString(_kWalletState);
     final wallet = walletRaw == null
@@ -76,8 +80,44 @@ class PlayerState extends ChangeNotifier {
       wallet?['granaryBuilt'] as String? ?? p.getString(_kGranaryBuilt) ?? '',
     );
     _ticketWeek = DateTime.tryParse(p.getString(_kTicketWeek) ?? '');
+    _plots
+      ..clear()
+      ..addAll(
+        (wallet?['plots'] as List? ?? const []).map(
+          (plot) =>
+              VillagePlot.fromJson(Map<String, dynamic>.from(plot as Map)),
+        ),
+      );
+    if (wallet?['villageVersion'] != 2) {
+      var refundCoins = 0, refundLogs = 0;
+      for (final entry in _levels.entries.where(
+        (entry) => !entry.key.functional,
+      )) {
+        for (var level = 0; level < entry.value; level++) {
+          final cost = buildCost(entry.key, level);
+          refundCoins += cost.coins;
+          refundLogs += cost.logs;
+        }
+      }
+      final upgrades = Map<Building, int>.of(_levels)
+        ..removeWhere((b, _) => !b.functional);
+      await _writeWallet(
+        p,
+        coins + refundCoins,
+        logs + refundLogs,
+        upgrades,
+        granaryBuiltAt,
+        (wallet?['applied'] as List? ?? const []).cast<String>(),
+      );
+      coins += refundCoins;
+      logs += refundLogs;
+      _levels
+        ..clear()
+        ..addAll(upgrades);
+    }
+    _loaded = true;
     notifyListeners();
-  }
+  });
 
   Future<void> deposit({
     required int coins,
@@ -111,6 +151,9 @@ class PlayerState extends ChangeNotifier {
   });
 
   Future<bool> build(Building b, Rank current) => _withWallet(() async {
+    if (!b.functional || current.index < castleUpgradeRank(b).index) {
+      return false;
+    }
     final level = levelOf(b);
     final required = b.requiredCharacter;
     if (level >= b.maxLevel) return false;
@@ -155,12 +198,15 @@ class PlayerState extends ChangeNotifier {
     int nextLogs,
     Map<Building, int> levels,
     DateTime? builtAt,
-    List<String> applied,
-  ) async {
+    List<String> applied, {
+    List<VillagePlot>? nextPlots,
+  }) async {
     try {
       if (!await p.setString(
         _kWalletState,
         jsonEncode({
+          'villageVersion': 2,
+          'plots': (nextPlots ?? _plots).map((plot) => plot.toJson()).toList(),
           'coins': nextCoins,
           'logs': nextLogs,
           'applied': applied,
@@ -177,6 +223,73 @@ class PlayerState extends ChangeNotifier {
       rethrow;
     }
   }
+
+  Future<void> _storePlots(List<VillagePlot> next) async {
+    final p = await loadPersistentPreferences();
+    final raw = p.getString(_kWalletState);
+    final applied = raw == null
+        ? <String>[]
+        : ((jsonDecode(raw) as Map)['applied'] as List? ?? const [])
+              .cast<String>();
+    await _writeWallet(
+      p,
+      coins,
+      logs,
+      _levels,
+      granaryBuiltAt,
+      applied,
+      nextPlots: next,
+    );
+    _plots
+      ..clear()
+      ..addAll(next);
+    notifyListeners();
+  }
+
+  Future<String> beginConstruction({
+    required String task,
+    required int focusMinutes,
+  }) async {
+    final building = focusBuildingForMinutes(focusMinutes);
+    if (!_loaded) await load();
+    return _withWallet(() async {
+      final id = 'plot-${_clock().microsecondsSinceEpoch}-${_plotSequence++}';
+      await _storePlots([
+        ..._plots,
+        VillagePlot(
+          id: id,
+          building: building,
+          task: task,
+          focusMinutes: focusMinutes,
+        ),
+      ]);
+      return id;
+    });
+  }
+
+  Future<void> finishConstruction(String id, {required bool won}) =>
+      _withWallet(() async {
+        final index = _plots.indexWhere((plot) => plot.id == id);
+        if (index < 0) throw StateError('Construction not found: $id');
+        final nextState = won ? PlotState.complete : PlotState.ruined;
+        if (_plots[index].state == nextState) return;
+        if (_plots[index].state != PlotState.building) {
+          throw StateError('Construction is already final');
+        }
+        final next = List<VillagePlot>.of(_plots);
+        next[index] = next[index].withState(nextState);
+        await _storePlots(next);
+      });
+
+  Future<void> abandonUnfinishedConstructions() => _withWallet(() async {
+    if (!_plots.any((plot) => plot.state == PlotState.building)) return;
+    await _storePlots([
+      for (final plot in _plots)
+        plot.state == PlotState.building
+            ? plot.withState(PlotState.ruined)
+            : plot,
+    ]);
+  });
 
   Future<void> selectCharacter(GameCharacter c, Rank current) async {
     if (!isCharacterUnlocked(c, current)) return;

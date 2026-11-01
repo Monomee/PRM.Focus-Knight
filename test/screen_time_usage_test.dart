@@ -24,7 +24,9 @@ void main() {
   };
 
   setUp(() {
-    SharedPreferences.setMockInitialValues({'fk_daily_limit_minutes': 1});
+    SharedPreferences.setMockInitialValues({
+      'fk_app_limit_com.google.android.youtube': 1,
+    });
     now = DateTime.now();
     events = [];
     permissionGranted = true;

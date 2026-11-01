@@ -1,6 +1,8 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../../core/game/battle_plan.dart';
 import '../../core/game/player_state.dart';
 import '../../core/game/village.dart';
@@ -21,7 +23,9 @@ Future<void> openBattle(
   if (controller.isSetup) {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(kLastPlanKey);
-    final initial = saved == null ? BattlePlan.defaults : BattlePlan.fromJson(jsonDecode(saved));
+    final initial = saved == null
+        ? BattlePlan.defaults
+        : BattlePlan.fromJson(jsonDecode(saved));
     final longRest = prefs.getInt(kLongRestMinutesKey) ?? 15;
     if (!context.mounted) return;
     final plan = await showBattleSetupSheet(
@@ -32,17 +36,35 @@ Future<void> openBattle(
     );
     if (plan == null) return;
     await prefs.setString(kLastPlanKey, jsonEncode(plan.toJson()));
-    controller.startFocusSession(
-      task: plan.task,
-      durationSeconds: plan.focusMinutes * 60,
-      restDurationSeconds: plan.restMinutes * 60,
-      totalSessions: plan.sessions,
-      longBreakEvery: plan.longBreakEvery,
-      longRestSeconds: longRest * 60,
-    );
+    try {
+      final started = await controller.startFocusSession(
+        task: plan.task,
+        durationSeconds: plan.focusMinutes * 60,
+        restDurationSeconds: plan.restMinutes * 60,
+        totalSessions: plan.sessions,
+        longBreakEvery: plan.longBreakEvery,
+        longRestSeconds: longRest * 60,
+      );
+      if (!started) return;
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Chưa lưu được ô xây dựng. Hãy thử lại.'),
+          ),
+        );
+      }
+      return;
+    }
   }
   if (!context.mounted) return;
-  await Navigator.of(context).push(MaterialPageRoute(
-    builder: (_) => BattleScreen(controller: controller, player: player, onOpenVillage: onOpenVillage),
-  ));
+  await Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => BattleScreen(
+        controller: controller,
+        player: player,
+        onOpenVillage: onOpenVillage,
+      ),
+    ),
+  );
 }

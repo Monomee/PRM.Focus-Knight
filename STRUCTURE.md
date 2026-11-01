@@ -65,13 +65,13 @@ lib/
 
 | File/module | Trách nhiệm |
 | --- | --- |
-| `constants/blacklist_constants.dart` | Tên và package của các ứng dụng được theo dõi/chặn. |
+| `constants/blacklist_constants.dart` | Danh sách mặc định cho cài đặt cũ; lựa chọn thực tế do người dùng lưu trong ScreenTimeTracker. |
 | `game/battle_plan.dart` | Kế hoạch trận, chuyển đổi JSON, giới hạn phút nhập, lịch trình và ước tính thời gian/phần thưởng. |
 | `game/economy.dart` | Công thức Coin/Log và hằng số HP, hình phạt, thuế xao nhãng, thời gian tạm dừng. |
 | `game/player_state.dart` | Ví, công trình, nhân vật/huy hiệu đang chọn, vé giữ chuỗi và lưu trạng thái người chơi. |
 | `game/progression.dart` | Hạng, ngưỡng giờ, điều kiện mở nhân vật/huy hiệu và đường dẫn ảnh huy hiệu. |
 | `game/sprites.dart` | Sprite sheet và số frame của nhân vật, quái và hoạt ảnh chết. |
-| `game/village.dart` | Loại công trình, tác dụng, cấp tối đa và chi phí xây/nâng cấp. |
+| `game/village.dart` | Nâng cấp Castle theo rank, công trình theo tổng phút focus và trạng thái ô đất vĩnh viễn. |
 | `services/alert_notifier.dart` | Gọi Android qua MethodChannel `focusknight/alerts` để hiển thị thông báo cảnh báo. |
 | `services/distraction_guard.dart` | Quản lý ân hạn, lần phạt HP và nhịp trừ Coin khi dùng app bị chặn. |
 | `services/foreground_task_service.dart` | Giám sát hạn mức trong worker nền độc lập với giao diện, duy trì foreground service, phối hợp heartbeat trận và cập nhật thông báo phiên. |
@@ -91,9 +91,9 @@ lib/
 | `battle/` | `battle_launcher.dart`: mở thiết lập hoặc quay lại trận. `battle_setup_sheet.dart`: form cấu hình trận. `battle_screen.dart`: chọn giao diện theo trạng thái phiên. |
 | `battle/` | `focus_view.dart`, `camp_view.dart`, `result_view.dart`: màn tập trung, nghỉ và kết quả. `mindful_interruption_dialog.dart`: hộp thoại trước khi bỏ cuộc qua nút Back. |
 | `focus_session/` | `focus_session_controller.dart`: đồng hồ, chuyển phiên, nghỉ, HP, pause và quỹ trận. `settlement.dart`: lưu bản ghi khoản trả thưởng và tiếp tục xử lý khi cần. |
-| `village/` | `village_screen.dart`: bản đồ và ô công trình. `building_sheet.dart`: chi tiết và thao tác xây/nâng cấp. |
+| `village/` | `village_screen.dart`: Castle cố định và lưới đất 3×3 phân trang. `building_sheet.dart`: ba nâng cấp chức năng, khóa theo rank. |
 | `collection/` | `collection_screen.dart`: chọn nhân vật và huy hiệu. |
-| `settings/` | `settings_screen.dart`: quyền, hạn mức MXH, hạn mức từng app và thời lượng nghỉ dài. |
+| `settings/` | Chọn ứng dụng, quản lý quyền, chỉnh hạn mức riêng từng app và thời lượng nghỉ dài; app chưa chỉnh dùng 30 phút/ngày. |
 | `dashboard/services/` | `focus_history_service.dart`: lịch sử focus, số phiên, xao nhãng, streak và ngày được bảo vệ. `analytics_service.dart`: tổng hợp dữ liệu phân tích. |
 | `dashboard/widgets/` | `golden_hours_card.dart`, `distraction_velocity_card.dart`, `correlation_chart_card.dart`: card giờ vàng, tần suất xao nhãng và tương quan. |
 | `telemetry/` | `screen_time_tracker.dart`: UsageStats, tổng thời gian MXH, hạn mức và phát hiện ứng dụng vừa mở. |
@@ -120,7 +120,7 @@ Dữ liệu được lưu cục bộ bằng SharedPreferences. Các nhóm khóa 
 | Làng và giữ chuỗi | `fk_buildings`, `fk_streak_tickets`, `fk_granary_built`, `fk_ticket_week`, `fk_shielded_dates` |
 | Thiết lập trận | `fk_last_plan`, `fk_long_rest_minutes` |
 | Lịch sử | `fk_completed_dates`, `fk_total_focus_seconds_all_time`, `fk_focus_sec_*`, `fk_hourly_focus_*`, `fk_session_count_*`, `fk_interruption_day_*` |
-| Hạn mức MXH | `fk_daily_limit_minutes`, `fk_app_limit_*` |
+| Ứng dụng và hạn mức riêng | `fk_tracked_apps`, `fk_strict_mode`, `fk_app_limit_*`; `fk_daily_limit_minutes` cũ không còn được đọc |
 | Khoản trả thưởng đang xử lý | `fk_pending_settlement` |
 | Snapshot ví và lịch sử | `fk_wallet_state` (số dư, công trình, ngày xây Kho lương, ID đã trả), `fk_history_settlement_state` (tổng giờ, ngày/giờ/số phiên, ID đã ghi) |
 

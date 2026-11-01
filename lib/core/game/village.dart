@@ -1,21 +1,93 @@
 import 'dart:math' as math;
+
 import 'progression.dart';
 
 const _dir = 'ui/buildings/player_building';
 
 /// Village buildings. Only [functional] ones have gameplay effects; the rest are decoration.
 enum Building {
-  tower('$_dir/Tower.png', 'Tháp canh', 2, null, 200, 40, true, 'Ân hạn 10s → 12s → 15s'),
-  granary('$_dir/House1.png', 'Kho lương', 1, null, 150, 30, true, '1 vé giữ chuỗi mỗi tuần'),
-  barracks('$_dir/Barracks.png', 'Doanh trại', 2, null, 300, 60, true, '+10% Coin mỗi cấp'),
-  archery('$_dir/Archery.png', 'Trường bắn', 3, GameCharacter.archer, 150, 30, false, 'Nhà của Archer'),
-  monastery('$_dir/Monastery.png', 'Tu viện', 3, GameCharacter.monk, 250, 50, false, 'Nhà của Monk'),
-  castle('$_dir/Castle.png', 'Lâu đài', 3, GameCharacter.warrior, 400, 80, false, 'Nhà của Warrior'),
+  tower(
+    '$_dir/Tower.png',
+    'Tháp canh',
+    2,
+    null,
+    200,
+    40,
+    true,
+    'Ân hạn 10s → 12s → 15s',
+  ),
+  granary(
+    '$_dir/House1.png',
+    'Kho lương',
+    1,
+    null,
+    150,
+    30,
+    true,
+    '1 vé giữ chuỗi mỗi tuần',
+  ),
+  barracks(
+    '$_dir/Barracks.png',
+    'Doanh trại',
+    2,
+    null,
+    300,
+    60,
+    true,
+    '+10% Coin mỗi cấp',
+  ),
+  archery(
+    '$_dir/Archery.png',
+    'Trường bắn',
+    3,
+    GameCharacter.archer,
+    150,
+    30,
+    false,
+    'Nhà của Archer',
+  ),
+  monastery(
+    '$_dir/Monastery.png',
+    'Tu viện',
+    3,
+    GameCharacter.monk,
+    250,
+    50,
+    false,
+    'Nhà của Monk',
+  ),
+  castle(
+    '$_dir/Castle.png',
+    'Lâu đài',
+    3,
+    GameCharacter.warrior,
+    400,
+    80,
+    false,
+    'Nhà của Warrior',
+  ),
   house2('$_dir/House2.png', 'Nhà dân', 3, null, 100, 20, false, 'Trang trí'),
-  house3('$_dir/House3.png', 'Nhà dân lớn', 3, null, 100, 20, false, 'Trang trí');
+  house3(
+    '$_dir/House3.png',
+    'Nhà dân lớn',
+    3,
+    null,
+    100,
+    20,
+    false,
+    'Trang trí',
+  );
 
-  const Building(this.asset, this.label, this.maxLevel, this.requiredCharacter, this.baseCoins,
-      this.baseLogs, this.functional, this.effect);
+  const Building(
+    this.asset,
+    this.label,
+    this.maxLevel,
+    this.requiredCharacter,
+    this.baseCoins,
+    this.baseLogs,
+    this.functional,
+    this.effect,
+  );
   final String asset;
   final String label;
   final int maxLevel;
@@ -31,4 +103,78 @@ enum Building {
   return (coins: (b.baseCoins * m).round(), logs: (b.baseLogs * m).round());
 }
 
-int graceSecondsFor(int towerLevel) => const [10, 12, 15][towerLevel.clamp(0, 2)];
+int graceSecondsFor(int towerLevel) =>
+    const [10, 12, 15][towerLevel.clamp(0, 2)];
+
+Rank castleUpgradeRank(Building building) => switch (building) {
+  Building.tower => Rank.starter,
+  Building.granary => Rank.gold,
+  Building.barracks => Rank.diamond,
+  _ => throw ArgumentError('Not a Castle upgrade'),
+};
+
+enum FocusBuilding {
+  house1('$_dir/House1.png', 'Nhà dân'),
+  archery('$_dir/Archery.png', 'Trường bắn'),
+  tower('$_dir/Tower.png', 'Tháp canh'),
+  monastery('$_dir/Monastery.png', 'Tu viện'),
+  barracks('$_dir/Barracks.png', 'Doanh trại');
+
+  const FocusBuilding(this.asset, this.label);
+  final String asset;
+  final String label;
+}
+
+FocusBuilding focusBuildingForMinutes(int minutes) {
+  if (minutes < 1) throw ArgumentError.value(minutes, 'minutes');
+  if (minutes <= 30) return FocusBuilding.house1;
+  if (minutes <= 60) return FocusBuilding.archery;
+  if (minutes <= 100) return FocusBuilding.tower;
+  if (minutes <= 150) return FocusBuilding.monastery;
+  return FocusBuilding.barracks;
+}
+
+enum PlotState { building, complete, ruined }
+
+class VillagePlot {
+  const VillagePlot({
+    required this.id,
+    required this.building,
+    required this.task,
+    required this.focusMinutes,
+    this.state = PlotState.building,
+  });
+  final String id;
+  final FocusBuilding building;
+  final String task;
+  final int focusMinutes;
+  final PlotState state;
+
+  static const ruinAsset =
+      'ui/buildings/enemy_building/Goblin_House_Destroyed.png';
+  String get asset => state == PlotState.ruined ? ruinAsset : building.asset;
+
+  VillagePlot withState(PlotState value) => VillagePlot(
+    id: id,
+    building: building,
+    task: task,
+    focusMinutes: focusMinutes,
+    state: value,
+  );
+
+  Map<String, Object> toJson() => {
+    'id': id,
+    'building': building.name,
+    'task': task,
+    'minutes': focusMinutes,
+    'state': state.name,
+  };
+
+  factory VillagePlot.fromJson(Map<String, dynamic> json) => VillagePlot(
+    id: json['id'] as String,
+    building: FocusBuilding.values.byName(json['building'] as String),
+    task: json['task'] as String,
+    focusMinutes: json['minutes'] as int,
+    state: PlotState.values.byName(json['state'] as String),
+  );
+}

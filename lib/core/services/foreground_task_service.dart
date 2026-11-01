@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:usage_stats/usage_stats.dart';
 
-import '../constants/blacklist_constants.dart';
 import '../../features/telemetry/screen_time_tracker.dart';
 import 'alert_notifier.dart';
 import 'overlay_service.dart';
@@ -53,7 +52,7 @@ class FocusTaskHandler extends TaskHandler {
       await tracker.refreshUsageStats();
       if (_destroyed || now.millisecondsSinceEpoch < _battleUntil) return;
       if (pkg != null && tracker.isAppLimitExceeded(pkg)) {
-        final name = BlacklistConstants.appNames[pkg] ?? pkg;
+        final name = tracker.appNameFor(pkg);
         await ForegroundTaskService.notifyAppLimitExceeded(
           appName: name,
           packageName: pkg,

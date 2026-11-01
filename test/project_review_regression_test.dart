@@ -1,6 +1,5 @@
 import 'dart:convert';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:test_dart/core/game/player_state.dart';
@@ -9,35 +8,6 @@ import 'package:test_dart/core/game/village.dart';
 import 'package:test_dart/features/dashboard/services/focus_history_service.dart';
 import 'package:test_dart/features/dashboard/services/analytics_service.dart';
 import 'package:test_dart/features/focus_session/settlement.dart';
-import 'package:test_dart/core/services/overlay_service.dart';
-import 'package:test_dart/features/settings/settings_screen.dart';
-import 'package:test_dart/features/telemetry/screen_time_tracker.dart';
-
-class _LoadingTracker extends ScreenTimeTracker {
-  int limit = 60;
-
-  @override
-  int get dailyLimitMinutes => limit;
-
-  @override
-  bool get hasPermission => true;
-
-  @override
-  Future<void> init() async {}
-
-  @override
-  Future<void> refreshUsageStats() async {}
-
-  void finishLoading() {
-    limit = 240;
-    notifyListeners();
-  }
-}
-
-class _QuietOverlay extends OverlayService {
-  @override
-  Future<bool> checkPermission() async => false;
-}
 
 class _UnavailableHistory extends FocusHistoryService {
   @override
@@ -166,29 +136,4 @@ void main() {
       expect(analytics.goldenHours.peakTimeSlot, '21:00 - 24:00');
     },
   );
-
-  testWidgets('review 8: first async settings load updates the clean field', (
-    tester,
-  ) async {
-    final tracker = _LoadingTracker();
-    final overlay = _QuietOverlay();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SettingsScreen(
-            screenTimeTracker: tracker,
-            overlayService: overlay,
-          ),
-        ),
-      ),
-    );
-    await tester.pump();
-    tracker.finishLoading();
-    await tester.pump();
-    final field = tester.widget<TextField>(find.byType(TextField).first);
-    expect(field.controller!.text, '240');
-    await tester.pumpWidget(const SizedBox());
-    tracker.dispose();
-    overlay.dispose();
-  });
 }

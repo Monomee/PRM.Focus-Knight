@@ -27,12 +27,14 @@ class BattleResult {
     required this.logs,
     required this.focusSeconds,
     required this.sessions,
+    this.building,
   });
   final bool won;
   final int coins;
   final int logs;
   final int focusSeconds;
   final int sessions;
+  final FocusBuilding? building;
 }
 
 /// Controller for a battle: Pomodoro countdown, rest breaks, hero HP, pause, and the
@@ -101,14 +103,22 @@ class FocusSessionController extends ChangeNotifier {
     int logs,
     List<int> seconds,
     List<List<FocusInterval>> intervals,
+    String? constructionId,
   })?
   _unsettledVictory;
-  bool get hasPendingSettlement => _unsettledVictory != null;
+  bool get hasPendingSettlement =>
+      _unsettledVictory != null || _unsettledFailure != null;
   bool _settling = false;
   bool get isSettling => _settling;
   bool _settlementFailed = false;
   bool get settlementFailed => _settlementFailed;
   bool _disposed = false;
+  bool _starting = false;
+  bool get isStarting => _starting;
+  String? _constructionId;
+  FocusBuilding? _focusBuilding;
+  String? _unsettledFailure;
+  Future<void>? _settlementFuture;
 
   // Pause state
   bool _isPaused = false;
@@ -153,31 +163,56 @@ class FocusSessionController extends ChangeNotifier {
       _totalSessions > 1 ? ' (Phiên $_currentSession/$_totalSessions)' : '';
 
   /// Start a new battle (one or more focus sessions)
-  void startFocusSession({
+  Future<bool> startFocusSession({
     required String task,
     required int durationSeconds,
     int totalSessions = 1,
     int restDurationSeconds = 300,
     int longBreakEvery = 0,
     int longRestSeconds = 900,
-  }) {
-    if (inBattle || hasPendingSettlement) return;
-    _countdownTimer?.cancel();
-    _taskName = task.trim().isEmpty ? 'Deep Work' : task.trim();
-    _totalSessions = totalSessions > 0 ? totalSessions : 1;
-    _currentSession = 1;
-    _totalFocusSeconds = durationSeconds;
-    _totalRestSeconds = restDurationSeconds;
-    _longBreakEvery = longBreakEvery;
-    _longRestSeconds = longRestSeconds;
-    _heroHp = kHeroMaxHp;
-    _pendingCoins = 0;
-    _pendingLogs = 0;
-    _completedSessionSeconds.clear();
-    _completedSessionIntervals.clear();
-    _lastSessionReward = null;
-    _lastResult = null;
-    _beginFocus();
+  }) async {
+    if (_disposed || _starting || inBattle || hasPendingSettlement) {
+      return false;
+    }
+    if (durationSeconds < 1) {
+      throw ArgumentError.value(durationSeconds, 'durationSeconds');
+    }
+    _starting = true;
+    notifyListeners();
+    try {
+      final count = totalSessions > 0 ? totalSessions : 1;
+      final minutes = (durationSeconds * count / 60).ceil();
+      final id = await player.beginConstruction(
+        task: task.trim(),
+        focusMinutes: minutes,
+      );
+      if (_disposed) {
+        await player.finishConstruction(id, won: false);
+        return false;
+      }
+      _constructionId = id;
+      _focusBuilding = focusBuildingForMinutes(minutes);
+      _countdownTimer?.cancel();
+      _taskName = task.trim().isEmpty ? 'Deep Work' : task.trim();
+      _totalSessions = totalSessions > 0 ? totalSessions : 1;
+      _currentSession = 1;
+      _totalFocusSeconds = durationSeconds;
+      _totalRestSeconds = restDurationSeconds;
+      _longBreakEvery = longBreakEvery;
+      _longRestSeconds = longRestSeconds;
+      _heroHp = kHeroMaxHp;
+      _pendingCoins = 0;
+      _pendingLogs = 0;
+      _completedSessionSeconds.clear();
+      _completedSessionIntervals.clear();
+      _lastSessionReward = null;
+      _lastResult = null;
+      _beginFocus();
+      return true;
+    } finally {
+      _starting = false;
+      if (!_disposed) notifyListeners();
+    }
   }
 
   void _beginFocus({DateTime? startedAt}) {
@@ -317,6 +352,7 @@ class FocusSessionController extends ChangeNotifier {
       logs: _pendingLogs,
       focusSeconds: pendingFocusSeconds,
       sessions: seconds.length,
+      building: _focusBuilding,
     );
     final coins = _pendingCoins, logs = _pendingLogs;
     _unsettledVictory = (
@@ -325,6 +361,7 @@ class FocusSessionController extends ChangeNotifier {
       logs: logs,
       seconds: seconds,
       intervals: intervals,
+      constructionId: _constructionId,
     );
     final newRank = rankUp(
       _history.totalFocusSecondsAllTime,
@@ -342,23 +379,35 @@ class FocusSessionController extends ChangeNotifier {
     unawaited(retrySettlement());
   }
 
-  Future<void> retrySettlement() async {
+  Future<void> retrySettlement() =>
+      _settlementFuture ??= _performSettlement().whenComplete(() {
+        _settlementFuture = null;
+      });
+
+  Future<void> _performSettlement() async {
     final payout = _unsettledVictory;
-    if (payout == null || _settling) return;
+    final failed = _unsettledFailure;
+    if (payout == null && failed == null) return;
     _settling = true;
     _settlementFailed = false;
     notifyListeners();
     try {
-      await Settlement.commit(
-        settlementId: payout.id,
-        coins: payout.coins,
-        logs: payout.logs,
-        sessionSeconds: payout.seconds,
-        sessionIntervals: payout.intervals,
-        player: player,
-        history: _history,
-      );
+      if (payout != null) {
+        await Settlement.commit(
+          settlementId: payout.id,
+          coins: payout.coins,
+          logs: payout.logs,
+          sessionSeconds: payout.seconds,
+          sessionIntervals: payout.intervals,
+          player: player,
+          history: _history,
+          constructionId: payout.constructionId,
+        );
+      } else {
+        await player.finishConstruction(failed!, won: false);
+      }
       _unsettledVictory = null;
+      _unsettledFailure = null;
     } catch (_) {
       _settlementFailed = true;
     } finally {
@@ -382,8 +431,11 @@ class FocusSessionController extends ChangeNotifier {
       logs: 0,
       focusSeconds: 0,
       sessions: _completedSessionSeconds.length,
+      building: _focusBuilding,
     );
+    _unsettledFailure = _constructionId;
     _resetToSetup();
+    unawaited(retrySettlement());
   }
 
   void _resetToSetup() {
@@ -401,6 +453,8 @@ class FocusSessionController extends ChangeNotifier {
     _focusStartedAt = null;
     _phaseEndsAt = null;
     _pauseEndsAt = null;
+    _constructionId = null;
+    _focusBuilding = null;
     notifyListeners();
   }
 
@@ -487,6 +541,10 @@ class FocusSessionController extends ChangeNotifier {
 
   /// Cancel current session and return to setup (no rewards, nothing recorded)
   void cancelSession() {
+    if (inBattle && _constructionId != null) {
+      _defeat();
+      return;
+    }
     ForegroundTaskService.stopSessionNotification();
     _resetToSetup();
   }

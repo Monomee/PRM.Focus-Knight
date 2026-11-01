@@ -6,26 +6,10 @@ import 'package:test_dart/features/settings/settings_screen.dart';
 import 'package:test_dart/features/telemetry/screen_time_tracker.dart';
 
 class TestScreenTimeTracker extends ScreenTimeTracker {
-  int limit = 60;
-
   @override
   bool get hasPermission => true;
-
-  @override
-  int get dailyLimitMinutes => limit;
-
   @override
   Future<void> refreshUsageStats() async {}
-
-  @override
-  Future<void> setDailyLimitMinutes(int minutes) async {
-    limit = minutes;
-    notifyListeners();
-  }
-
-  void refresh() {
-    notifyListeners();
-  }
 }
 
 class TestOverlayService extends OverlayService {
@@ -99,11 +83,10 @@ void main() {
   );
 
   testWidgets(
-    'notifications do not overwrite a focused dirty daily limit draft',
+    'only per-app limits are editable and new apps start at 30 minutes',
     (tester) async {
       final tracker = TestScreenTimeTracker();
       final overlay = TestOverlayService();
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -115,53 +98,22 @@ void main() {
         ),
       );
       await tester.pump();
-
-      final field = find.byType(TextField).first;
-      await tester.tap(field);
-      await tester.enterText(field, '120');
-
-      tracker.refresh();
-      overlay.refresh();
-      await tester.pump();
-
-      expect(tester.widget<TextField>(field).controller?.text, '120');
-
-      tracker.limit = 90;
-      tracker.refresh();
-      await tester.pump();
-
-      expect(tester.widget<TextField>(field).controller?.text, '120');
-    },
-  );
-
-  testWidgets(
-    'syncs a clean unfocused field only after the configured limit changes',
-    (tester) async {
-      final tracker = TestScreenTimeTracker();
-      final overlay = TestOverlayService();
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SettingsScreen(
-              screenTimeTracker: tracker,
-              overlayService: overlay,
-            ),
-          ),
-        ),
-      );
-      await tester.pump();
-
-      final field = find.byType(TextField).first;
-      tracker.refresh();
-      await tester.pump();
-      expect(tester.widget<TextField>(field).controller?.text, '60');
-
-      tracker.limit = 90;
-      tracker.refresh();
-      await tester.pump();
-
-      expect(tester.widget<TextField>(field).controller?.text, '90');
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('HẠN MỨC MẶC ĐỊNH'), findsNothing);
+      final edit = find.byIcon(Icons.edit).first;
+      await tester.ensureVisible(edit);
+      await tester.tap(edit);
+      await tester.pumpAndSettle();
+      final field = find.byType(TextField);
+      expect(tester.widget<TextField>(field).controller!.text, '30');
+      await tester.enterText(field, '90');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Lưu'));
+      await tester.pumpAndSettle();
+      expect(tracker.getAppLimit('com.facebook.katana'), 90);
+      expect(find.text('0s / 90m'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      tracker.dispose();
+      overlay.dispose();
     },
   );
 }

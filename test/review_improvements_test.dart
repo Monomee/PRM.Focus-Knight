@@ -16,7 +16,7 @@ void main() {
   test('review 9: delayed callbacks catch up elapsed focus time', () async {
     final controller = FocusSessionController();
     addTearDown(controller.dispose);
-    controller.startFocusSession(task: 'Delayed', durationSeconds: 4);
+    await controller.startFocusSession(task: 'Delayed', durationSeconds: 4);
     sleep(const Duration(milliseconds: 2200));
     await Future<void>.delayed(const Duration(milliseconds: 50));
     expect(controller.remainingSeconds, lessThanOrEqualTo(2));
@@ -162,7 +162,7 @@ void main() {
     test(
       'late callback catches up rest and next focus across midnight',
       () async {
-        controller.startFocusSession(
+        await controller.startFocusSession(
           task: 'Midnight',
           durationSeconds: 20,
           totalSessions: 2,
@@ -196,7 +196,7 @@ void main() {
     test(
       'single callback can finish several elapsed phases exactly once',
       () async {
-        controller.startFocusSession(
+        await controller.startFocusSession(
           task: 'Catch up',
           durationSeconds: 60,
           totalSessions: 3,
@@ -224,7 +224,7 @@ void main() {
 
     test('manual pause excludes the gap across an hour boundary', () async {
       now = DateTime(2026, 10, 31, 10, 59, 50);
-      controller.startFocusSession(task: 'Pause', durationSeconds: 20);
+      await controller.startFocusSession(task: 'Pause', durationSeconds: 20);
       now = now.add(const Duration(seconds: 5));
       expect(controller.pause(), isTrue);
       expect(controller.remainingSeconds, 15);
@@ -243,7 +243,7 @@ void main() {
     });
 
     test('late auto resume counts focus after the five minute pause', () async {
-      controller.startFocusSession(task: 'Timeout', durationSeconds: 20);
+      await controller.startFocusSession(task: 'Timeout', durationSeconds: 20);
       now = now.add(const Duration(seconds: 5));
       controller.pause();
       now = now.add(const Duration(seconds: 308));
@@ -260,7 +260,10 @@ void main() {
     test(
       'fractional pause preserves seconds and fractional history totals',
       () async {
-        controller.startFocusSession(task: 'Fractions', durationSeconds: 2);
+        await controller.startFocusSession(
+          task: 'Fractions',
+          durationSeconds: 2,
+        );
         now = now.add(const Duration(milliseconds: 500));
         controller.pause();
         now = now.add(const Duration(milliseconds: 1250));
@@ -278,7 +281,7 @@ void main() {
     );
 
     test('pause cannot postpone an already completed battle', () async {
-      controller.startFocusSession(task: 'Expired', durationSeconds: 1);
+      await controller.startFocusSession(task: 'Expired', durationSeconds: 1);
       now = now.add(const Duration(seconds: 10));
       expect(controller.pause(), isFalse);
       await pumpEventQueue();
@@ -286,7 +289,7 @@ void main() {
     });
 
     test('skipping rest timestamps next session at actual skip time', () async {
-      controller.startFocusSession(
+      await controller.startFocusSession(
         task: 'Skip',
         durationSeconds: 10,
         totalSessions: 2,
@@ -305,7 +308,7 @@ void main() {
     });
 
     test('skip cannot restart next focus after rest already elapsed', () async {
-      controller.startFocusSession(
+      await controller.startFocusSession(
         task: 'Late skip',
         durationSeconds: 10,
         totalSessions: 2,
@@ -325,7 +328,10 @@ void main() {
     });
 
     test('late abandon cannot forfeit an already completed victory', () async {
-      controller.startFocusSession(task: 'Late abandon', durationSeconds: 60);
+      await controller.startFocusSession(
+        task: 'Late abandon',
+        durationSeconds: 60,
+      );
       now = now.add(const Duration(seconds: 61));
       controller.forceAbandonSession();
       await pumpEventQueue();
@@ -334,8 +340,8 @@ void main() {
       expect(history.totalFocusSecondsAllTime, 60);
     });
 
-    test('stale skip does not skip a later rest in the same battle', () {
-      controller.startFocusSession(
+    test('stale skip does not skip a later rest in the same battle', () async {
+      await controller.startFocusSession(
         task: 'Stale skip',
         durationSeconds: 10,
         totalSessions: 3,

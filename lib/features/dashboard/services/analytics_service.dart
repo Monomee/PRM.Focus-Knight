@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:usage_stats/usage_stats.dart';
 
-import '../../../core/constants/blacklist_constants.dart';
+import '../../../core/services/persistent_preferences.dart';
+import '../../telemetry/screen_time_tracker.dart';
 import 'focus_history_service.dart';
 
 /// Data point representing a single day's correlation between social media usage and focus completion
@@ -130,6 +131,9 @@ class AnalyticsService extends ChangeNotifier {
     const targetFocusSec = 75 * 60;
 
     bool usagePermission = false;
+    final trackedApps = ScreenTimeTracker.readTrackedApps(
+      await loadPersistentPreferences(),
+    );
     try {
       usagePermission = await UsageStats.checkUsagePermission() ?? false;
     } catch (_) {}
@@ -153,7 +157,7 @@ class AnalyticsService extends ChangeNotifier {
             endOfDay,
           );
           int totalSocialMs = 0;
-          for (final pkg in BlacklistConstants.defaultBlacklist) {
+          for (final pkg in trackedApps.keys) {
             totalSocialMs += stats[pkg]?.totalTimeInForegroundMs ?? 0;
           }
           socialHours = totalSocialMs / 3600000.0;
