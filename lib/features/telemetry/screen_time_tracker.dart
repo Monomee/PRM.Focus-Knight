@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:usage_stats/usage_stats.dart';
 
 import '../../core/constants/blacklist_constants.dart';
+import '../../core/services/persistent_preferences.dart';
 
 class ForegroundUsageState {
   ForegroundUsageState({
@@ -47,6 +48,9 @@ class ScreenTimeTracker extends ChangeNotifier {
 
   int _dailyLimitMinutes = 60;
   int get dailyLimitMinutes => _dailyLimitMinutes;
+
+  bool _strictModeEnabled = false;
+  bool get strictModeEnabled => _strictModeEnabled;
 
   final Map<String, int> _appLimits = {};
   Map<String, int> get appLimits => Map.unmodifiable(_appLimits);
@@ -100,8 +104,10 @@ class ScreenTimeTracker extends ChangeNotifier {
   Future<void>? _usageRefresh;
 
   ScreenTimeTracker() {
-    init();
+    ready = init();
   }
+
+  late final Future<void> ready;
 
   Future<void> init() async {
     await _loadPersistedLimit();
@@ -114,8 +120,9 @@ class ScreenTimeTracker extends ChangeNotifier {
 
   Future<void> _loadPersistedLimit() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await loadPersistentPreferences();
       _dailyLimitMinutes = prefs.getInt('fk_daily_limit_minutes') ?? 60;
+      _strictModeEnabled = prefs.getBool('fk_strict_mode') ?? false;
       for (final pkg in BlacklistConstants.defaultBlacklist) {
         final lim = prefs.getInt('fk_app_limit_$pkg');
         if (lim != null) {
@@ -126,6 +133,13 @@ class ScreenTimeTracker extends ChangeNotifier {
     } catch (_) {}
   }
 
+  Future<void> reloadLimits() async {
+    final prefs = await loadPersistentPreferences();
+    await prefs.reload();
+    _appLimits.clear();
+    await _loadPersistedLimit();
+  }
+
   Future<void> setDailyLimitMinutes(int minutes) async {
     _dailyLimitMinutes = minutes;
     notifyListeners();
@@ -133,6 +147,20 @@ class ScreenTimeTracker extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt('fk_daily_limit_minutes', minutes);
     } catch (_) {}
+  }
+
+  Future<void> setStrictModeEnabled(bool enabled) async {
+    final prefs = await loadPersistentPreferences();
+    try {
+      if (!await prefs.setBool('fk_strict_mode', enabled)) {
+        throw StateError('Failed to save strict mode');
+      }
+    } catch (_) {
+      invalidatePreferenceCache();
+      rethrow;
+    }
+    _strictModeEnabled = enabled;
+    if (!_disposed) notifyListeners();
   }
 
   Future<void> setAppLimit(String pkg, int minutes) async {
@@ -429,8 +457,14 @@ class ScreenTimeTracker extends ChangeNotifier {
   }
 
   Future<String?> getActiveBlacklistedPackage() async {
+    final now = DateTime.now();
     final package = await _pollForeground(
-      earliest: DateTime.now().subtract(const Duration(seconds: 15)),
+      // A restarted worker must recognize an app opened before it was restarted.
+      earliest: DateTime(
+        now.year,
+        now.month,
+        now.day,
+      ).subtract(const Duration(days: 1)),
     );
     return BlacklistConstants.defaultBlacklist.contains(package)
         ? package

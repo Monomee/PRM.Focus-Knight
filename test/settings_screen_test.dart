@@ -29,8 +29,19 @@ class TestScreenTimeTracker extends ScreenTimeTracker {
 }
 
 class TestOverlayService extends OverlayService {
+  bool permission = false;
+  int requests = 0;
+
   @override
-  bool get hasPermission => false;
+  bool get hasPermission => permission;
+
+  @override
+  Future<bool> checkPermission() async => permission;
+
+  @override
+  Future<void> requestPermission() async {
+    requests++;
+  }
 
   void refresh() {
     notifyListeners();
@@ -43,6 +54,49 @@ void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
   });
+
+  testWidgets(
+    'strict switch requests permission, stays off on denial and saves when granted',
+    (tester) async {
+      final tracker = TestScreenTimeTracker();
+      final overlay = TestOverlayService();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SettingsScreen(
+              screenTimeTracker: tracker,
+              overlayService: overlay,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      final toggle = find.byType(SwitchListTile);
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(overlay.requests, 1);
+      expect(tracker.strictModeEnabled, isFalse);
+      expect(
+        find.text('Cần cấp quyền Overlay để bật Strict mode.'),
+        findsOneWidget,
+      );
+      overlay.permission = true;
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(tracker.strictModeEnabled, isTrue);
+      expect(
+        (await SharedPreferences.getInstance()).getBool('fk_strict_mode'),
+        isTrue,
+      );
+      await tester.tap(toggle);
+      await tester.pump();
+      expect(tracker.strictModeEnabled, isFalse);
+      await tester.pumpWidget(const SizedBox.shrink());
+      tracker.dispose();
+      overlay.dispose();
+    },
+  );
 
   testWidgets(
     'notifications do not overwrite a focused dirty daily limit draft',

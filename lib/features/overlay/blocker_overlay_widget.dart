@@ -1,7 +1,9 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+
 import '../../core/game/economy.dart';
 import '../../core/widgets/sprite_anim.dart';
 
@@ -28,18 +30,24 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
   int _hp = kHeroMaxHp;
   int _coins = 0;
   bool _defeated = false;
+  bool _dailyLimit = false;
+  int _limitMinutes = 0;
   Timer? _closeTimer;
 
   @override
   void initState() {
     super.initState();
-    _sub = (widget.updates ?? FlutterOverlayWindow.overlayListener).listen((data) {
+    _sub = (widget.updates ?? FlutterOverlayWindow.overlayListener).listen((
+      data,
+    ) {
       if (data is! Map) return;
       setState(() {
+        _dailyLimit = data['mode'] == 'dailyLimit';
+        _limitMinutes = data['limitMinutes'] as int? ?? 0;
         _app = data['app'] as String? ?? _app;
         _hp = data['hp'] as int? ?? _hp;
         _coins = data['coins'] as int? ?? _coins;
-        _defeated = data['defeated'] as bool? ?? _defeated;
+        _defeated = !_dailyLimit && (data['defeated'] as bool? ?? false);
       });
       // The battle is over: show the defeat briefly, then stop blocking.
       if (!_defeated) {
@@ -62,8 +70,12 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
     super.dispose();
   }
 
-  TextStyle _pixel(double size, Color color) =>
-      TextStyle(fontFamily: kPixelFont, fontSize: size, color: color, fontWeight: FontWeight.w700);
+  TextStyle _pixel(double size, Color color) => TextStyle(
+    fontFamily: kPixelFont,
+    fontSize: size,
+    color: color,
+    fontWeight: FontWeight.w700,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -80,52 +92,84 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFFEF4444), width: 2),
               ),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const PixelIcon('shield', size: 64),
-                const SizedBox(height: 12),
-                Text(_defeated ? 'Thất bại – mất toàn bộ phần thưởng của trận' : 'ĐANG TRONG TRẬN!',
-                    textAlign: TextAlign.center, style: _pixel(22, const Color(0xFFEF4444))),
-                if (_app.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(_app, style: _pixel(16, const Color(0xFFF5E6C8))),
-                ],
-                const SizedBox(height: 18),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(3),
-                  child: LinearProgressIndicator(
-                    value: _hp / kHeroMaxHp,
-                    minHeight: 12,
-                    color: const Color(0xFFEF4444),
-                    backgroundColor: const Color(0xFF3A2A20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const PixelIcon('shield', size: 64),
+                  const SizedBox(height: 12),
+                  Text(
+                    _dailyLimit
+                        ? 'ĐÃ HẾT THỜI GIAN SỬ DỤNG'
+                        : _defeated
+                        ? 'Thất bại – mất toàn bộ phần thưởng của trận'
+                        : 'ĐANG TRONG TRẬN!',
+                    textAlign: TextAlign.center,
+                    style: _pixel(22, const Color(0xFFEF4444)),
                   ),
-                ),
-                const SizedBox(height: 4),
-                Text('HP $_hp/$kHeroMaxHp', style: _pixel(14, const Color(0xFFF5E6C8))),
-                const SizedBox(height: 14),
-                Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  const PixelIcon('coin', size: 24),
-                  const SizedBox(width: 6),
-                  Text('Quỹ trận: $_coins coin', style: _pixel(15, const Color(0xFFFFD54F))),
-                ]),
-                if (!_defeated)
-                  Text('−$kDistractionTax coin mỗi $kTaxIntervalSeconds giây',
-                      style: _pixel(12, const Color(0xFFF87171))),
-                const SizedBox(height: 22),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: () async {
-                      FlutterForegroundTask.launchApp('/');
-                      await FlutterOverlayWindow.closeOverlay();
-                    },
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF10B981),
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                  if (_app.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(_app, style: _pixel(16, const Color(0xFFF5E6C8))),
+                  ],
+                  const SizedBox(height: 18),
+                  if (_dailyLimit)
+                    Text(
+                      'Bạn đã dùng hết hạn mức $_limitMinutes phút hôm nay. Hãy nghỉ ngơi và quay lại FocusKnight.',
+                      textAlign: TextAlign.center,
+                      style: _pixel(16, const Color(0xFFF5E6C8)),
+                    )
+                  else ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: _hp / kHeroMaxHp,
+                        minHeight: 12,
+                        color: const Color(0xFFEF4444),
+                        backgroundColor: const Color(0xFF3A2A20),
+                      ),
                     ),
-                    child: Text('QUAY LẠI TRẬN', style: _pixel(17, Colors.white)),
+                    const SizedBox(height: 4),
+                    Text(
+                      'HP $_hp/$kHeroMaxHp',
+                      style: _pixel(14, const Color(0xFFF5E6C8)),
+                    ),
+                    const SizedBox(height: 14),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const PixelIcon('coin', size: 24),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Quỹ trận: $_coins coin',
+                          style: _pixel(15, const Color(0xFFFFD54F)),
+                        ),
+                      ],
+                    ),
+                    if (!_defeated)
+                      Text(
+                        '−$kDistractionTax coin mỗi $kTaxIntervalSeconds giây',
+                        style: _pixel(12, const Color(0xFFF87171)),
+                      ),
+                  ],
+                  const SizedBox(height: 22),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: () async {
+                        FlutterForegroundTask.launchApp('/');
+                        await FlutterOverlayWindow.closeOverlay();
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: Text(
+                        _dailyLimit ? 'QUAY LẠI FOCUSKNIGHT' : 'QUAY LẠI TRẬN',
+                        style: _pixel(17, Colors.white),
+                      ),
+                    ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             ),
           ),
         ),

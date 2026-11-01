@@ -10,7 +10,7 @@
 
     <application
         android:label="FocusKnight"
-        android:name="${applicationName}"
+        android:name=".FocusKnightApplication"
         android:icon="@mipmap/ic_launcher">
         <!-- Small icon for the session-timer notification (flutter_foreground_task). -->
         <meta-data
@@ -46,7 +46,7 @@
             android:exported="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Pomodoro focus session tracking" />
+                android:value="Daily social app limit monitoring and Pomodoro focus session tracking" />
         </service>
 
         <!-- Flutter Overlay Window Service -->
