@@ -171,9 +171,11 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
     if (_distractionCheckRunning || _overlayService.isAppInForeground) return;
     _distractionCheckRunning = true;
     try {
+      _sessionController.refreshTimer();
       if (_sessionController.inBattle) {
         final fg = await _screenTimeTracker.foregroundSinceLeft();
         if (_overlayService.isAppInForeground) return;
+        _sessionController.refreshTimer();
         if (fg != null &&
             !_interruptionCounted &&
             _sessionController.isFocusing) {
@@ -230,6 +232,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
         (_) => _checkDistraction(),
       );
     } else if (state == AppLifecycleState.resumed) {
+      _sessionController.refreshTimer();
       unawaited(_sessionController.retrySettlement());
       // User returned to FocusKnight: stop tracker timer, close overlay immediately
       _overlayService.isAppInForeground = true;

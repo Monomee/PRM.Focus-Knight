@@ -25,7 +25,12 @@ class Settlement {
     required PlayerState player,
     required FocusHistoryService history,
     String? settlementId,
+    List<List<FocusInterval>>? sessionIntervals,
   }) {
+    if (sessionIntervals != null &&
+        sessionIntervals.length != sessionSeconds.length) {
+      throw ArgumentError('Every completed session must have focus intervals');
+    }
     return _locked(() async {
       final prefs = await loadPersistentPreferences();
       final queue = _readQueue(prefs.getString(key));
@@ -38,6 +43,17 @@ class Settlement {
           'coins': coins,
           'logs': logs,
           'seconds': sessionSeconds,
+          if (sessionIntervals != null)
+            'intervals': [
+              for (final session in sessionIntervals)
+                [
+                  for (final interval in session)
+                    {
+                      'start': interval.start.toUtc().toIso8601String(),
+                      'end': interval.end.toUtc().toIso8601String(),
+                    },
+                ],
+            ],
           'recorded': 0,
           'deposited': false,
         });
@@ -64,10 +80,24 @@ class Settlement {
       final settlement = queue.first;
       final id = settlement['id'] as String;
       final seconds = (settlement['seconds'] as List).cast<int>();
+      final intervals = settlement['intervals'] as List?;
+      if (intervals != null && intervals.length != seconds.length) {
+        throw const FormatException('Incomplete settlement timestamps');
+      }
       for (var i = settlement['recorded'] as int; i < seconds.length; i++) {
         await history.recordCompletedSession(
           seconds[i],
           settlementId: '$id:history:$i',
+          intervals: intervals == null
+              ? null
+              : [
+                  for (final interval in intervals[i] as List)
+                    (
+                      start: DateTime.parse(interval['start'] as String)
+                          .toLocal(),
+                      end: DateTime.parse(interval['end'] as String).toLocal(),
+                    ),
+                ],
         );
         settlement['recorded'] = i + 1;
         await _writeQueue(prefs, queue);

@@ -4,7 +4,7 @@ Ngày review ban đầu: 2026-10-28.
 
 Cập nhật gần nhất: 2026-10-31.
 
-Tài liệu này tổng hợp 13 vấn đề đã báo cáo trong phiên review và trạng thái xử lý hiện tại. Sau phúc tra nhánh `camtu`, các lỗi còn lại ở mục 1, 5, 7 và 8 đã được sửa bổ sung. Các mục "Nên cải thiện" và "Có thể tinh gọn" vẫn là công việc còn lại.
+Tài liệu này tổng hợp 13 vấn đề đã báo cáo trong phiên review và trạng thái xử lý hiện tại. Sau phúc tra nhánh `camtu`, các lỗi còn lại ở mục 1, 5, 7 và 8 đã được sửa bổ sung. Đợt cải thiện tiếp theo đã xử lý mục 9, 10 và 13; mục 12 đã có cấu hình ký riêng, chờ chủ dự án cung cấp khóa. Phần nghiệm thu thiết bị thật ở mục 11 do chủ dự án thực hiện.
 
 ## Phạm vi và kết quả kiểm tra
 
@@ -23,6 +23,18 @@ Kết quả sau đợt sửa bổ sung ngày 2026-10-31:
 - `flutter test --no-pub`: 132 test đạt.
 - `flutter build apk --debug --no-pub`: đạt, cài và chạy trên Samsung SM-G781N, Android 13 qua USB.
 - `git diff --check`: đạt.
+
+Kết quả đợt cải thiện mục 9–13 cùng ngày:
+
+- `flutter analyze --no-pub`: không phát hiện lỗi.
+- `flutter test --no-pub`: **146 test đạt** (thêm 15 test hồi quy, bỏ 1 placeholder).
+- `flutter build apk --debug --no-pub`: đạt; APK cuối đã cài cập nhật qua `adb install -r` lên Samsung SM-G781N, Android 13, giữ dữ liệu ứng dụng.
+- Khởi động qua ADB trả `Status: ok`; Activity ở trạng thái resumed, tiến trình còn chạy; không thấy `FATAL EXCEPTION`, `Unhandled Exception` hoặc `E/flutter` trong 300 dòng log gần nhất của tiến trình. Đây là smoke test, không thay nghiệm thu mục 11.
+- Đã tái hiện lỗi callback trễ và ghi lịch sử sai ngày trước khi sửa; bổ sung test giờ nghỉ, pause tự hết, phần lẻ giây, qua nửa đêm và retry sau khi lịch sử đã ghi bền vững.
+- Review độc lập phát hiện thêm thao tác skip/bỏ cuộc đến trễ; đã tái hiện bằng test và sửa để không kéo dài phiên hoặc làm mất thưởng của trận đã hoàn thành.
+- Gradle `:app:preReleaseBuild --offline`: dừng đúng dự kiến khi thiếu khóa release, chỉ rõ cần `android/key.properties`.
+- Kiểm tra quy tắc Git: `android/key.properties`, `*.jks`, `*.keystore` trong `android/` đều bị ignore.
+- `git diff --check`: đạt. Chi tiết: [review-improvements](docs/reviews/2026-10-31-review-improvements.md).
 
 Đã kiểm tra thêm trên thiết bị thật cho khóa màn hình, overlay khi thắng trận, cảnh báo vượt hạn khi YouTube mở liên tục và nạp hạn mức cài đặt. Chưa kiểm tra mọi tình huống trên mọi phiên bản Android/OEM. Báo cáo phúc tra trước khi sửa được giữ tại [camtu-verification](docs/reviews/2026-10-31-camtu-verification.md).
 
@@ -128,68 +140,72 @@ Vị trí chính: [settings_screen.dart](lib/features/settings/settings_screen.d
 - Listener, controller và `FocusNode` được giải phóng đầy đủ.
 - Baseline đồng bộ được khởi tạo trước khi đăng ký listener; lần nạp đầu hiển thị đúng cấu hình 240 thay vì giữ mặc định 60.
 
-## Nên cải thiện
+## Cải thiện bổ sung và nghiệm thu còn chờ
 
 ### 9. Đồng hồ cần dựa trên thời gian đã trôi qua
 
-Vị trí: [focus_session_controller.dart](lib/features/focus_session/focus_session_controller.dart), dòng 170.
+Trạng thái: **Đã sửa; kiểm thử tự động đạt, chờ nghiệm thu chạy nền thực tế ở mục 11**.
 
-- **Hiện tại:** Mỗi callback timer chỉ trừ một giây, kể cả đồng hồ tạm dừng.
-- **Vấn đề:** Khi callback bị chậm hoặc tiến trình bị treo tạm thời, bộ đếm không bù phần thời gian đã trôi qua.
-- **Cải thiện:** Dùng mốc thời gian kết thúc và tính lại thời gian còn lại; kiểm tra khi tắt màn hình và bật tiết kiệm pin. Đây là xử lý khi tiến trình còn sống, không yêu cầu khôi phục trận sau khi tiến trình bị tắt.
-- **Nếu giữ nguyên:** Phiên có thể kéo dài hơn thời lượng người dùng chọn. Mức độ xảy ra trên điện thoại hiện chưa được đo.
+Vị trí: [focus_session_controller.dart](lib/features/focus_session/focus_session_controller.dart), [main.dart](lib/main.dart).
+
+- Mỗi giai đoạn dùng mốc kết thúc; callback chỉ tính lại thời gian còn lại, làm tròn lên để không kết thúc sớm phần lẻ giây.
+- Callback đến trễ bù các giai đoạn focus/nghỉ đã trôi qua, bao gồm nghỉ dài và thời gian focus sau khi pause tự hết 5 phút.
+- Tiếp tục thủ công chỉ loại đúng thời gian đã tạm dừng; không mất phần lẻ giây.
+- Đồng bộ lại khi ứng dụng trở về foreground và trước khi áp dụng guard chạy nền. Skip và bỏ cuộc cũng đồng bộ trước khi xử lý, tránh thao tác cũ tác động sai giai đoạn.
+- Chỉ xử lý khi tiến trình còn sống; không khôi phục trận đang chơi sau khi tiến trình bị tắt.
 
 ### 10. Lịch sử phiên thiếu thời điểm thực tế
 
-Vị trí: [focus_session_controller.dart](lib/features/focus_session/focus_session_controller.dart), dòng 237; [focus_history_service.dart](lib/features/dashboard/services/focus_history_service.dart), dòng 63.
+Trạng thái: **Đã sửa cho các phiên mới; dữ liệu cũ không có timestamp giữ fallback cũ**.
 
-- **Hiện tại:** Quỹ trận chỉ giữ số giây từng phiên. Khi thắng, toàn bộ phiên được ghi theo ngày và giờ trả thưởng.
-- **Vấn đề:** Một trận kéo qua nhiều giờ hoặc qua nửa đêm sẽ dồn dữ liệu về thời điểm kết thúc; phục hồi trả thưởng hôm sau cũng ghi vào hôm sau.
-- **Cải thiện:** Giữ thêm thời điểm của từng phiên trong quỹ và bản ghi trả thưởng. Việc chỉ công nhận giờ khi thắng vẫn có thể giữ nguyên.
-- **Nếu giữ nguyên:** Lịch ngày và khung giờ vàng không phản ánh thời gian thực sự tập trung.
+Vị trí: [focus_session_controller.dart](lib/features/focus_session/focus_session_controller.dart), [settlement.dart](lib/features/focus_session/settlement.dart), [focus_history_service.dart](lib/features/dashboard/services/focus_history_service.dart).
+
+- Quỹ trận và journal giữ các khoảng bắt đầu/kết thúc tập trung của từng phiên, loại trừ thời gian pause. Journal lưu timestamp UTC, phân bổ thống kê theo giờ địa phương lúc xử lý.
+- Khi thắng, số giây được chia theo ranh giới giờ/ngày thực tế. Mỗi phiên được đếm một lần vào ngày hoàn thành; ngày có giây tập trung được thêm vào lịch và streak.
+- Retry/khôi phục trả thưởng hôm sau giữ nguyên timestamp, không dồn dữ liệu sang ngày retry, không cộng trùng lịch sử hoặc ví.
+- Giữ tổng số giây chính xác khi chia các khoảng có phần lẻ giây. Kiểm tra khoảng bị đảo, chồng lấn hoặc không khớp thời lượng trước khi ghi.
+- Journal cũ thiếu timestamp vẫn đọc được theo cách cũ. Không suy đoán hay sửa lại phân bố lịch sử đã ghi trước đợt này.
 
 ### 11. Kiểm thử thiết bị thật cho các luồng nền quan trọng
 
-Trạng thái: **Đã bổ sung phần lớn unit/widget test; còn thiếu kiểm thử trên Android thật**.
+Trạng thái: **146 unit/widget test đạt; chủ dự án sẽ thực hiện phần nghiệm thu Android thật**.
 
 Vị trí: thư mục [test](test), đặc biệt [analytics_metrics_test.dart](test/analytics_metrics_test.dart), [focus_history_test.dart](test/focus_history_test.dart), [settlement_test.dart](test/settlement_test.dart), [foreground_detection_test.dart](test/foreground_detection_test.dart) và [settings_screen_test.dart](test/settings_screen_test.dart).
 
 - Đã thêm test hồi quy cho analytics không tạo dữ liệu mẫu, đổi ngày, lỗi và retry settlement, tính idempotent của trả thưởng, chuỗi sự kiện foreground/khóa màn hình và draft hạn mức.
-- Bộ test hiện có 132 test đạt, gồm lỗi ghi/đọc phục hồi, retry sau side effect, ghi đồng thời, UsageEvents khi app còn mở, khóa màn hình, đổi ngày và cấp quyền sau khởi động.
+- Bộ test hiện có 146 test đạt, gồm lỗi ghi/đọc phục hồi, retry sau side effect, ghi đồng thời, UsageEvents khi app còn mở, khóa màn hình, đổi ngày, cấp quyền sau khởi động và hồi quy timer/timestamp mới.
 - Đã chạy các ca khóa máy, vượt hạn khi app mở lâu và kết thúc trận khi overlay hiển thị trên Samsung Android 13. Còn cần kiểm tra luồng cấp quyền lần đầu trên thiết bị mới và các OEM/phiên bản khác.
 - Cần kiểm tra trên nhiều phiên bản Android/OEM vì thời điểm UsageStats phát sự kiện có thể khác nhau.
+- Chủ dự án cần kiểm tra thêm: khóa màn hình và bật tiết kiệm pin trong phiên/nghỉ/pause; bật lại sau hạn kết thúc; cấp quyền lần đầu trên máy mới. Không xóa dữ liệu hoặc thu hồi quyền trên điện thoại hiện tại để giả lập máy mới.
 
-### 12. Cấu hình ký bản release vẫn dùng khóa debug
+### 12. Cấu hình ký bản release riêng
 
-Vị trí: [build.gradle.kts](android/app/build.gradle.kts), dòng 32.
+Trạng thái: **Đã cấu hình; chờ khóa riêng của chủ dự án để build/kiểm tra bản release chính thức**.
 
-- **Hiện tại:** Bản release dùng `signingConfigs.getByName("debug")`.
-- **Vấn đề:** Khóa ký bản phát hành chưa được cấu hình riêng.
-- **Cải thiện:** Trước khi phân phối chính thức, thiết lập khóa ký release và cách quản lý khóa ngoài Git.
-- **Nếu giữ nguyên:** Bản release vẫn phụ thuộc khóa debug của môi trường build.
+Vị trí: [build.gradle.kts](android/app/build.gradle.kts), [key.properties.example](android/key.properties.example), [README.md](README.md#ký-bản-phát-hành-android).
 
-## Có thể tinh gọn
+- Release dùng signing config riêng, đọc `storeFile`, `storePassword`, `keyAlias`, `keyPassword` từ file `android/key.properties` bị ignore.
+- Thiếu giá trị cấu hình sẽ bị chặn ở `preReleaseBuild`; không rơi về khóa debug và không tạo release unsigned do thiếu khóa. Debug vẫn build được khi chưa có khóa release.
+- Có file mẫu và hướng dẫn tạo/sao lưu khóa ngoài Git. Không tự tạo khóa production hoặc điền mật khẩu thay chủ dự án.
+- Chưa có `android/key.properties` trên môi trường hiện tại, nên chưa kiểm tra chữ ký APK/AAB release bằng khóa thật.
+
+## Đã tinh gọn
 
 ### 13. Bỏ dependency không dùng và test placeholder
 
-Vị trí: [pubspec.yaml](pubspec.yaml), dòng 36; [widget_test.dart](test/widget_test.dart), dòng 1.
+Trạng thái: **Đã xử lý**.
 
-- **Hiện tại:** Có `cupertino_icons` nhưng không tìm thấy nơi dùng trong mã ứng dụng; một test chỉ kiểm tra `1 + 1 == 2`.
-- **Vấn đề:** Chúng không giúp kiểm chứng tính năng hiện tại.
-- **Cải thiện:** Bỏ dependency và test placeholder này.
-- **Nếu giữ nguyên:** Tác động nhỏ, nhưng tăng phần phải duy trì mà không tạo giá trị.
-
-Khả năng tinh gọn: bỏ 1 dependency trực tiếp và file test placeholder 7 dòng.
+- Bỏ `cupertino_icons` khỏi `pubspec.yaml` và lockfile vì mã ứng dụng không dùng.
+- Xóa `test/widget_test.dart` chỉ kiểm tra `1 + 1 == 2`.
+- Resolve dependency bằng cache offline; không nâng các package khác, không thêm dependency mới.
 
 ## Thứ tự ưu tiên hiện tại
 
-Tám mục ưu tiên ban đầu đã được xử lý. Công việc còn lại nên theo thứ tự:
+Các phần sửa mã ở mục 1–10 và 13 đã được xử lý. Công việc còn lại:
 
 1. Mở rộng kiểm thử các luồng UsageStats, khóa màn hình, cảnh báo hạn mức và overlay sang Android/OEM khác và cấp quyền lần đầu.
-2. Sửa đồng hồ dựa trên thời gian thực đã trôi qua.
-3. Lưu thời điểm thực tế của từng phiên tập trung.
-4. Cấu hình khóa ký release trước khi phân phối.
-5. Dọn dependency và test placeholder không dùng.
+2. Nghiệm thu timer khi khóa màn hình/tiết kiệm pin, bao gồm pause tự hết và các giai đoạn đã hết hạn.
+3. Chủ dự án cấu hình khóa release riêng, sao lưu khóa/mật khẩu và kiểm tra APK/AAB đã ký trước khi phân phối.
 
 Chưa có lý do từ mã hiện tại để thay toàn bộ cách quản lý state hoặc thêm framework mới.
 
@@ -203,5 +219,7 @@ Chưa có lý do từ mã hiện tại để thay toàn bộ cách quản lý st
 ## Giới hạn kiểm tra và rủi ro
 
 Chưa kiểm tra APK release, Android/OEM khác, pin/FPS, từng ảnh/font và từng dòng scaffold native của các nền tảng phụ.
+
+Timer dùng mốc `DateTime`; chưa nghiệm thu tình huống người dùng chỉnh giờ hệ thống hoặc đổi múi giờ giữa trận/giữa các lần retry. Dữ liệu cũ không có timestamp không thể phân bổ lại chính xác. Các cảnh báo build hiện có về Kotlin plugin của `usage_stats` và SDK XML chưa được xử lý trong phạm vi này.
 
 Các thay đổi đã vượt qua unit/widget test, static analysis và các ca USB nêu trên; không suy rộng một Samsung Android 13 thành mọi thiết bị. SharedPreferences không phải cơ sở dữ liệu giao dịch; cần mở rộng kiểm thử kill tiến trình tại các bước ghi thực tế. Nếu bộ nhớ không thể ghi ngay journal đầu tiên, phần thưởng được giữ trong tiến trình và UI yêu cầu thử lại trước khi đóng ứng dụng; không thể bảo đảm dữ liệu bền vững khi thiết bị hoàn toàn không ghi được.

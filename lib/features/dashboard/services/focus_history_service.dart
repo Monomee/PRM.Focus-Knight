@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 
 import '../../../core/services/persistent_preferences.dart';
 
+typedef FocusInterval = ({DateTime start, DateTime end});
+
 /// Lightweight service managing user focus history, dot-grid calendar dates, and streak calculation.
-/// Uses SharedPreferences with simple string list and integer keys for O(1) performance without bulky JSON.
+/// Uses a durable snapshot with legacy preference keys for compatibility.
 class FocusHistoryService extends ChangeNotifier {
   static FocusHistoryService? _instance;
   static FocusHistoryService get instance =>
@@ -84,7 +86,26 @@ class FocusHistoryService extends ChangeNotifier {
   Future<void> recordCompletedSession(
     int durationSeconds, {
     String? settlementId,
+    List<FocusInterval>? intervals,
   }) async {
+    if (durationSeconds < 0 || (intervals != null && intervals.isEmpty)) {
+      throw ArgumentError('Invalid completed focus session');
+    }
+    if (intervals != null) {
+      var micros = 0;
+      DateTime? previousEnd;
+      for (final interval in intervals) {
+        if (interval.end.isBefore(interval.start) ||
+            (previousEnd != null && interval.start.isBefore(previousEnd))) {
+          throw ArgumentError('Focus intervals must be ordered and disjoint');
+        }
+        micros += interval.end.difference(interval.start).inMicroseconds;
+        previousEnd = interval.end;
+      }
+      if (micros ~/ Duration.microsecondsPerSecond != durationSeconds) {
+        throw ArgumentError('Focus intervals must match session duration');
+      }
+    }
     final prefs = await loadPersistentPreferences();
     final now = _clock();
     final todayStr = formatDate(now);
@@ -106,24 +127,70 @@ class FocusHistoryService extends ChangeNotifier {
     final days = Map<String, dynamic>.from(state['days'] as Map);
     final hours = Map<String, dynamic>.from(state['hours'] as Map);
     final counts = Map<String, dynamic>.from(state['counts'] as Map);
-    final daySeconds =
-        (days[todayStr] as int? ??
-            prefs.getInt('$_prefixFocusSecDay$todayStr') ??
-            0) +
-        durationSeconds;
-    final hour = now.hour.toString();
-    final hourSeconds =
-        (hours[hour] as int? ?? prefs.getInt('$_prefixHourlyFocus$hour') ?? 0) +
-        durationSeconds;
+    final dayAdds = <String, int>{};
+    final hourAdds = <String, int>{};
+    if (intervals == null) {
+      // shortcut: old sessions have no timestamps; use payout time for legacy journals.
+      dayAdds[todayStr] = durationSeconds;
+      hourAdds['${now.hour}'] = durationSeconds;
+    } else {
+      var elapsedMicros = 0;
+      for (final interval in intervals) {
+        var cursor = interval.start.toLocal();
+        final end = interval.end.toLocal();
+        while (cursor.isBefore(end)) {
+          // Add elapsed time so the boundary is also correct across DST changes.
+          final nextHour = cursor.add(
+            Duration(
+              microseconds:
+                  Duration.microsecondsPerHour -
+                  cursor.minute * Duration.microsecondsPerMinute -
+                  cursor.second * Duration.microsecondsPerSecond -
+                  cursor.millisecond * Duration.microsecondsPerMillisecond -
+                  cursor.microsecond,
+            ),
+          );
+          final sliceEnd = nextHour.isBefore(end) ? nextHour : end;
+          final nextMicros =
+              elapsedMicros + sliceEnd.difference(cursor).inMicroseconds;
+          final seconds =
+              nextMicros ~/ Duration.microsecondsPerSecond -
+              elapsedMicros ~/ Duration.microsecondsPerSecond;
+          if (seconds > 0) {
+            final day = formatDate(cursor);
+            final hour = '${cursor.hour}';
+            dayAdds[day] = (dayAdds[day] ?? 0) + seconds;
+            hourAdds[hour] = (hourAdds[hour] ?? 0) + seconds;
+          }
+          elapsedMicros = nextMicros;
+          cursor = sliceEnd;
+        }
+      }
+    }
+    for (final entry in dayAdds.entries) {
+      days[entry.key] =
+          (days[entry.key] as int? ??
+              prefs.getInt('$_prefixFocusSecDay${entry.key}') ??
+              0) +
+          entry.value;
+    }
+    for (final entry in hourAdds.entries) {
+      hours[entry.key] =
+          (hours[entry.key] as int? ??
+              prefs.getInt('$_prefixHourlyFocus${entry.key}') ??
+              0) +
+          entry.value;
+    }
+    final completedDay = intervals == null
+        ? todayStr
+        : formatDate(intervals.last.end.toLocal());
     final sessionCount =
-        (counts[todayStr] as int? ??
-            prefs.getInt('$_prefixSessionCountDay$todayStr') ??
+        (counts[completedDay] as int? ??
+            prefs.getInt('$_prefixSessionCountDay$completedDay') ??
             0) +
         1;
     final total = (state['total'] as int) + durationSeconds;
-    days[todayStr] = daySeconds;
-    hours[hour] = hourSeconds;
-    counts[todayStr] = sessionCount;
+    counts[completedDay] = sessionCount;
     if (settlementId != null) applied.add(settlementId);
     try {
       if (!await prefs.setString(
@@ -142,18 +209,21 @@ class FocusHistoryService extends ChangeNotifier {
       invalidatePreferenceCache();
       rethrow;
     }
-    final completedDates = _completedDates.contains(todayStr)
-        ? _completedDates
-        : [..._completedDates, todayStr];
+    final completedDates = {..._completedDates, ...days.keys}.toList();
     await Future.wait([
       prefs.setStringList(_keyCompletedDates, completedDates),
-      prefs.setInt('$_prefixFocusSecDay$todayStr', daySeconds),
+      for (final day in dayAdds.keys)
+        prefs.setInt('$_prefixFocusSecDay$day', days[day] as int),
       prefs.setInt(_keyTotalFocusSecondsAllTime, total),
-      prefs.setInt('$_prefixHourlyFocus$hour', hourSeconds),
-      prefs.setInt('$_prefixSessionCountDay$todayStr', sessionCount),
+      for (final hour in hourAdds.keys)
+        prefs.setInt('$_prefixHourlyFocus$hour', hours[hour] as int),
+      prefs.setInt('$_prefixSessionCountDay$completedDay', sessionCount),
     ]);
     _completedDates = completedDates;
-    _todayFocusSeconds = daySeconds;
+    _todayFocusSeconds =
+        days[todayStr] as int? ??
+        prefs.getInt('$_prefixFocusSecDay$todayStr') ??
+        0;
     _totalFocusSecondsAllTime = total;
     notifyListeners();
   }

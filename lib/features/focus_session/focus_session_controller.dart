@@ -38,12 +38,17 @@ class BattleResult {
 /// Controller for a battle: Pomodoro countdown, rest breaks, hero HP, pause, and the
 /// battle escrow. Coin/Log and focus hours are only committed when the whole battle is won.
 class FocusSessionController extends ChangeNotifier {
-  FocusSessionController({PlayerState? player, FocusHistoryService? history})
-    : player = player ?? PlayerState(),
-      _history = history ?? FocusHistoryService.instance;
+  FocusSessionController({
+    PlayerState? player,
+    FocusHistoryService? history,
+    DateTime Function()? clock,
+  }) : player = player ?? PlayerState(),
+       _history = history ?? FocusHistoryService.instance,
+       _clock = clock ?? DateTime.now;
 
   final PlayerState player;
   final FocusHistoryService _history;
+  final DateTime Function() _clock;
 
   SessionPhase _phase = SessionPhase.setup;
   SessionPhase get phase => _phase;
@@ -79,13 +84,25 @@ class FocusSessionController extends ChangeNotifier {
   int _pendingLogs = 0;
   int get pendingLogs => _pendingLogs;
   final List<int> _completedSessionSeconds = [];
+  final List<List<FocusInterval>> _completedSessionIntervals = [];
+  final List<FocusInterval> _focusIntervals = [];
+  DateTime? _focusStartedAt;
+  DateTime? _phaseEndsAt;
+  DateTime? _pauseEndsAt;
   int get pendingFocusSeconds =>
       _completedSessionSeconds.fold(0, (a, b) => a + b);
   ({int coins, int logs})? _lastSessionReward;
   ({int coins, int logs})? get lastSessionReward => _lastSessionReward;
   BattleResult? _lastResult;
   BattleResult? get lastResult => _lastResult;
-  ({String id, int coins, int logs, List<int> seconds})? _unsettledVictory;
+  ({
+    String id,
+    int coins,
+    int logs,
+    List<int> seconds,
+    List<List<FocusInterval>> intervals,
+  })?
+  _unsettledVictory;
   bool get hasPendingSettlement => _unsettledVictory != null;
   bool _settling = false;
   bool get isSettling => _settling;
@@ -157,18 +174,23 @@ class FocusSessionController extends ChangeNotifier {
     _pendingCoins = 0;
     _pendingLogs = 0;
     _completedSessionSeconds.clear();
+    _completedSessionIntervals.clear();
     _lastSessionReward = null;
     _lastResult = null;
     _beginFocus();
   }
 
-  void _beginFocus() {
+  void _beginFocus({DateTime? startedAt}) {
     _phase = SessionPhase.focus;
     _isLongRest = false;
     _isPaused = false;
     _pauseUsed = false;
     _pauseRemainingSeconds = kMaxPauseSeconds;
     _remainingSeconds = _totalFocusSeconds;
+    _focusIntervals.clear();
+    _focusStartedAt = startedAt ?? _clock();
+    _phaseEndsAt = _focusStartedAt!.add(Duration(seconds: _totalFocusSeconds));
+    _pauseEndsAt = null;
     notifyListeners();
     ForegroundTaskService.startSessionNotification(
       taskName: '$_taskName$_sessionLabel',
@@ -188,36 +210,46 @@ class FocusSessionController extends ChangeNotifier {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(
       const Duration(seconds: 1),
-      (_) => _tick(),
+      (_) => refreshTimer(),
     );
   }
 
-  void _tick() {
+  static int _secondsUntil(DateTime end, DateTime now) => math.max(
+    0,
+    (end.difference(now).inMicroseconds / Duration.microsecondsPerSecond)
+        .ceil(),
+  );
+
+  /// Catch up even if Android delayed callbacks while the process stayed alive.
+  void refreshTimer() {
+    if (!inBattle) return;
+    final now = _clock();
     if (_isPaused) {
-      _pauseRemainingSeconds--;
-      if (_pauseRemainingSeconds <= 0) {
-        resumeFromPause();
-      } else {
+      _pauseRemainingSeconds = _secondsUntil(_pauseEndsAt!, now);
+      if (_pauseRemainingSeconds > 0) {
         notifyListeners();
+        return;
       }
-      return;
+      _resumePause(_pauseEndsAt!);
     }
-    if (_remainingSeconds > 1) {
-      _remainingSeconds--;
-      notifyListeners();
-      if (_remainingSeconds % 60 == 0) {
-        ForegroundTaskService.updateSessionNotification(
-          taskName: isFocusing ? '$_taskName$_sessionLabel' : _restLabel,
-          remainingTime: _minutesLeft,
-        );
+    // Carry deadlines forward, so a late callback cannot lengthen later phases.
+    while (inBattle && !now.isBefore(_phaseEndsAt!)) {
+      _remainingSeconds = 0;
+      if (isFocusing) {
+        _onFocusCompleted();
+      } else {
+        _onRestCompleted();
       }
-      return;
     }
-    _remainingSeconds = 0;
-    if (isFocusing) {
-      _onFocusCompleted();
-    } else {
-      _onRestCompleted();
+    if (!inBattle) return;
+    final previousMinutes = (_remainingSeconds / 60).ceil();
+    _remainingSeconds = _secondsUntil(_phaseEndsAt!, now);
+    notifyListeners();
+    if ((_remainingSeconds / 60).ceil() != previousMinutes) {
+      ForegroundTaskService.updateSessionNotification(
+        taskName: isFocusing ? '$_taskName$_sessionLabel' : _restLabel,
+        remainingTime: _minutesLeft,
+      );
     }
   }
 
@@ -225,10 +257,14 @@ class FocusSessionController extends ChangeNotifier {
       '${_isLongRest ? 'Nghỉ dài' : 'Nghỉ giải lao'} (Xong phiên $_currentSession/$_totalSessions)';
 
   @visibleForTesting
-  void debugCompleteFocus() => _onFocusCompleted();
+  void debugCompleteFocus() {
+    if (!isFocusing || _isPaused) return;
+    _onFocusCompleted();
+  }
 
   /// Triggered when focus countdown reaches 0
   void _onFocusCompleted() {
+    final endedAt = _phaseEndsAt!;
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.vibrate();
@@ -242,6 +278,8 @@ class FocusSessionController extends ChangeNotifier {
     _pendingCoins += reward.coins;
     _pendingLogs += reward.logs;
     _completedSessionSeconds.add(_totalFocusSeconds);
+    _focusIntervals.add((start: _focusStartedAt!, end: endedAt));
+    _completedSessionIntervals.add(List.of(_focusIntervals));
 
     if (_currentSession < _totalSessions) {
       _isLongRest =
@@ -254,6 +292,7 @@ class FocusSessionController extends ChangeNotifier {
       _phase = SessionPhase.rest;
       _isPaused = false;
       _remainingSeconds = rest;
+      _phaseEndsAt = endedAt.add(Duration(seconds: rest));
       notifyListeners();
       ForegroundTaskService.startSessionNotification(
         taskName: _restLabel,
@@ -268,6 +307,10 @@ class FocusSessionController extends ChangeNotifier {
 
   void _settleVictory() {
     final seconds = List<int>.of(_completedSessionSeconds);
+    final intervals = [
+      for (final session in _completedSessionIntervals)
+        List<FocusInterval>.of(session),
+    ];
     _lastResult = BattleResult(
       won: true,
       coins: _pendingCoins,
@@ -281,6 +324,7 @@ class FocusSessionController extends ChangeNotifier {
       coins: coins,
       logs: logs,
       seconds: seconds,
+      intervals: intervals,
     );
     final newRank = rankUp(
       _history.totalFocusSecondsAllTime,
@@ -310,6 +354,7 @@ class FocusSessionController extends ChangeNotifier {
         coins: payout.coins,
         logs: payout.logs,
         sessionSeconds: payout.seconds,
+        sessionIntervals: payout.intervals,
         player: player,
         history: _history,
       );
@@ -351,6 +396,11 @@ class FocusSessionController extends ChangeNotifier {
     _pendingCoins = 0;
     _pendingLogs = 0;
     _completedSessionSeconds.clear();
+    _completedSessionIntervals.clear();
+    _focusIntervals.clear();
+    _focusStartedAt = null;
+    _phaseEndsAt = null;
+    _pauseEndsAt = null;
     notifyListeners();
   }
 
@@ -360,12 +410,17 @@ class FocusSessionController extends ChangeNotifier {
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.vibrate();
     SystemSound.play(SystemSoundType.alert);
-    finishRestBreak();
+    final startedAt = _phaseEndsAt!;
+    _currentSession++;
+    _beginFocus(startedAt: startedAt);
   }
 
   /// Skip rest break directly to next focus session
   void finishRestBreak() {
     if (!isResting) return;
+    final restingSession = _currentSession;
+    refreshTimer();
+    if (!isResting || _currentSession != restingSession) return;
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     _currentSession++;
@@ -375,6 +430,12 @@ class FocusSessionController extends ChangeNotifier {
   /// One pause per session, up to [kMaxPauseSeconds]; auto-resumes.
   bool pause() {
     if (!canPause) return false;
+    refreshTimer();
+    if (!canPause) return false;
+    final now = _clock();
+    _focusIntervals.add((start: _focusStartedAt!, end: now));
+    _pauseEndsAt = now.add(const Duration(seconds: kMaxPauseSeconds));
+    _phaseEndsAt = _phaseEndsAt!.add(const Duration(seconds: kMaxPauseSeconds));
     _isPaused = true;
     _pauseUsed = true;
     _pauseRemainingSeconds = kMaxPauseSeconds;
@@ -388,6 +449,15 @@ class FocusSessionController extends ChangeNotifier {
 
   void resumeFromPause() {
     if (!_isPaused) return;
+    final now = _clock();
+    _resumePause(now.isBefore(_pauseEndsAt!) ? now : _pauseEndsAt!);
+    refreshTimer();
+  }
+
+  void _resumePause(DateTime resumedAt) {
+    _phaseEndsAt = _phaseEndsAt!.subtract(_pauseEndsAt!.difference(resumedAt));
+    _focusStartedAt = resumedAt;
+    _pauseEndsAt = null;
     _isPaused = false;
     notifyListeners();
     ForegroundTaskService.updateSessionNotification(
@@ -423,6 +493,7 @@ class FocusSessionController extends ChangeNotifier {
 
   /// Give up the battle: forfeits all escrowed rewards and hours.
   void forceAbandonSession({String? reason}) {
+    refreshTimer();
     if (!inBattle) return;
     _defeat();
   }
