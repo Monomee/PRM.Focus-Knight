@@ -133,7 +133,13 @@ class _VillageScreenState extends State<VillageScreen> {
                         : () => setState(() => _page--),
                     icon: const Icon(Icons.chevron_left),
                   ),
-                  Text('Mảnh đất ${_page + 1} / $pages', style: woodText(16)),
+                  Flexible(
+                    child: Text(
+                      'Mảnh đất ${_page + 1} / $pages',
+                      style: woodText(16),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                   IconButton(
                     key: const Key('map-next'),
                     tooltip: 'Mảnh đất tiếp theo',

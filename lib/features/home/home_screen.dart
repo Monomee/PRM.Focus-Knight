@@ -297,23 +297,73 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _weekCard() {
     final maxMinutes = _weekMinutes.fold(1, (a, b) => a > b ? a : b);
     final today = DateTime.now();
+    final streak = widget.history.calculateStreak();
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: Flat.cardBox(),
       child: Column(
         children: [
-          Row(
-            children: [
-              const Text(
-                '7 ngày qua',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              Text(
-                '🔥 ${widget.history.calculateStreak()} ngày liên tiếp',
-                style: Flat.label,
-              ),
-            ],
+          Container(
+            key: const ValueKey('home-streak'),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Flat.accent.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Flat.accent.withValues(alpha: 0.35)),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.local_fire_department_rounded,
+                  size: 32,
+                  color: Flat.accent,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Chuỗi tập trung',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Flat.accent,
+                        ),
+                      ),
+                      Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: '$streak',
+                              style: const TextStyle(
+                                fontFamily: kPixelFont,
+                                fontSize: 42,
+                                fontWeight: FontWeight.w700,
+                                color: Flat.accent,
+                              ),
+                            ),
+                            const TextSpan(
+                              text: ' ngày liên tiếp',
+                              style: TextStyle(fontSize: 13, color: Flat.text),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              '7 ngày qua',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+            ),
           ),
           const SizedBox(height: 10),
           SizedBox(

@@ -53,6 +53,16 @@ void main() {
     expect(shadows, isEmpty);
   });
 
+  testWidgets('home highlights the streak above the weekly chart on narrow screens', (tester) async {
+    await pumpHome(tester);
+    tester.view.physicalSize=const Size(320,860);
+    await tester.pump();
+    expect(find.byKey(const ValueKey('home-streak')),findsOneWidget);
+    expect(find.text('Chuỗi tập trung'),findsOneWidget);
+    expect(tester.takeException(),isNull);
+    controller.dispose();
+  });
+
   testWidgets('start opens the setup sheet', (tester) async {
     await pumpHome(tester);
     await tester.tap(find.text('BẮT ĐẦU'));

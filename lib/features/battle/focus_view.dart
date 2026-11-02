@@ -313,7 +313,7 @@ class _FocusViewState extends State<FocusView> with TickerProviderStateMixin {
 
 TextStyle _pixel(double size, Color color) => TextStyle(
       fontFamily: kPixelFont,
-      fontSize: size,
+      fontSize: size + 2,
       fontWeight: FontWeight.w700,
       color: color,
       shadows: const [Shadow(offset: Offset(2, 2), color: Color(0xFF3B2A10))],

@@ -109,15 +109,21 @@ class _CastleSheetState extends State<_CastleSheet> {
                 Text(b.effect, style: woodText(13)),
                 Text('Cấp $level/${b.maxLevel}', style: woodText(13)),
                 const SizedBox(height: 8),
-                Row(
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    if (!maxed) ...[
-                      const PixelIcon('coin', size: 20),
-                      Text(' ${cost.coins}  ', style: woodText(13)),
-                      const PixelIcon('log', size: 20),
-                      Text(' ${cost.logs}', style: woodText(13)),
-                    ],
-                    const Spacer(),
+                    if (!maxed)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const PixelIcon('coin', size: 20),
+                          Text(' ${cost.coins}  ', style: woodText(13)),
+                          const PixelIcon('log', size: 20),
+                          Text(' ${cost.logs}', style: woodText(13)),
+                        ],
+                      ),
                     FilledButton(
                       key: Key('upgrade-${b.name}'),
                       onPressed: locked || maxed || !affordable || _busy
