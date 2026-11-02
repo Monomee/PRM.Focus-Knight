@@ -9,7 +9,7 @@ const kWoodBorder = Color(0xFF6B4F2A);
 const kWoodText = Color(0xFFF5E6C8);
 
 TextStyle woodText(double size, {Color color = kWoodText}) =>
-    TextStyle(fontFamily: kPixelFont, fontSize: size, color: color, fontWeight: FontWeight.w700);
+    TextStyle(fontFamily: kPixelFont, fontSize: size + 2, color: color, fontWeight: FontWeight.w700);
 
 /// Rest break between sessions: campfire scene + session reward + skip button.
 class CampView extends StatelessWidget {

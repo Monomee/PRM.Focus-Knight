@@ -72,7 +72,7 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
 
   TextStyle _pixel(double size, Color color) => TextStyle(
     fontFamily: kPixelFont,
-    fontSize: size,
+    fontSize: size + 2,
     color: color,
     fontWeight: FontWeight.w700,
   );
@@ -138,9 +138,12 @@ class _BlockerOverlayWidgetState extends State<BlockerOverlayWidget> {
                       children: [
                         const PixelIcon('coin', size: 24),
                         const SizedBox(width: 6),
-                        Text(
-                          'Quỹ trận: $_coins coin',
-                          style: _pixel(15, const Color(0xFFFFD54F)),
+                        Flexible(
+                          child: Text(
+                            'Quỹ trận: $_coins coin',
+                            style: _pixel(15, const Color(0xFFFFD54F)),
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ],
                     ),
