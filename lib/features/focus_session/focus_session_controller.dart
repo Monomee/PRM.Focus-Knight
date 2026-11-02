@@ -11,6 +11,7 @@ import '../../core/game/village.dart';
 import '../../core/services/alert_notifier.dart';
 import '../../core/services/foreground_task_service.dart';
 import '../dashboard/services/focus_history_service.dart';
+import '../dashboard/services/analytics_journal.dart';
 import 'settlement.dart';
 
 enum SessionPhase {
@@ -44,9 +45,56 @@ class FocusSessionController extends ChangeNotifier {
     PlayerState? player,
     FocusHistoryService? history,
     DateTime Function()? clock,
+    bool Function()? analyticsMonitoring,
   }) : player = player ?? PlayerState(),
        _history = history ?? FocusHistoryService.instance,
-       _clock = clock ?? DateTime.now;
+       _clock = clock ?? DateTime.now,
+       _analyticsMonitoring = analyticsMonitoring ?? (() => false);
+
+  final bool Function() _analyticsMonitoring;
+  Map<String, dynamic>? _analyticsSession;
+  static int _analyticsSequence = 0;
+
+  void invalidateAnalyticsMonitoring() {
+    if (_analyticsSession == null) return;
+    _analyticsSession!['monitored'] = false;
+    AnalyticsJournal.instance.save(_analyticsSession!);
+  }
+
+  void recordLifecycleEvent(String state) {
+    final session = _analyticsSession;
+    if (session == null) return;
+    (session['lifecycle'] as List).add({
+      'state': state,
+      'at': _clock().toUtc().toIso8601String(),
+    });
+    AnalyticsJournal.instance.save(session);
+  }
+
+  void _saveAnalyticsEnd(String outcome, DateTime end, {String? reason}) {
+    final session = _analyticsSession;
+    if (session == null) return;
+    final intervals = List<FocusInterval>.of(_focusIntervals);
+    if (!_isPaused &&
+        _focusStartedAt != null &&
+        end.isAfter(_focusStartedAt!)) {
+      intervals.add((start: _focusStartedAt!, end: end));
+    }
+    session['end'] = end.toUtc().toIso8601String();
+    session['outcome'] = outcome;
+    session['reason'] = reason ?? outcome;
+    session['monitored'] =
+        session['monitored'] == true && _analyticsMonitoring();
+    session['intervals'] = [
+      for (final i in intervals)
+        {
+          'start': i.start.toUtc().toIso8601String(),
+          'end': i.end.toUtc().toIso8601String(),
+        },
+    ];
+    AnalyticsJournal.instance.save(session, collectUsage: true);
+    _analyticsSession = null;
+  }
 
   final PlayerState player;
   final FocusHistoryService _history;
@@ -86,6 +134,7 @@ class FocusSessionController extends ChangeNotifier {
   int _pendingLogs = 0;
   int get pendingLogs => _pendingLogs;
   final List<int> _completedSessionSeconds = [];
+  final List<String?> _completedAnalyticsIds = [];
   final List<List<FocusInterval>> _completedSessionIntervals = [];
   final List<FocusInterval> _focusIntervals = [];
   DateTime? _focusStartedAt;
@@ -102,6 +151,7 @@ class FocusSessionController extends ChangeNotifier {
     int coins,
     int logs,
     List<int> seconds,
+    List<String?> analyticsIds,
     List<List<FocusInterval>> intervals,
     String? constructionId,
   })?
@@ -204,6 +254,7 @@ class FocusSessionController extends ChangeNotifier {
       _pendingCoins = 0;
       _pendingLogs = 0;
       _completedSessionSeconds.clear();
+      _completedAnalyticsIds.clear();
       _completedSessionIntervals.clear();
       _lastSessionReward = null;
       _lastResult = null;
@@ -224,6 +275,19 @@ class FocusSessionController extends ChangeNotifier {
     _remainingSeconds = _totalFocusSeconds;
     _focusIntervals.clear();
     _focusStartedAt = startedAt ?? _clock();
+    _analyticsSession = {
+      'id':
+          '${_focusStartedAt!.microsecondsSinceEpoch}-${_analyticsSequence++}',
+      'start': _focusStartedAt!.toUtc().toIso8601String(),
+      'target': _totalFocusSeconds,
+      'monitored': _analyticsMonitoring(),
+      'interruptions': <String>[],
+      'lifecycle': <Map<String, dynamic>>[],
+      'pauses': <String>[],
+      'resumes': <String>[],
+      'intervals': <Map<String, dynamic>>[],
+    };
+    AnalyticsJournal.instance.save(_analyticsSession!);
     _phaseEndsAt = _focusStartedAt!.add(Duration(seconds: _totalFocusSeconds));
     _pauseEndsAt = null;
     notifyListeners();
@@ -300,6 +364,8 @@ class FocusSessionController extends ChangeNotifier {
   /// Triggered when focus countdown reaches 0
   void _onFocusCompleted() {
     final endedAt = _phaseEndsAt!;
+    _completedAnalyticsIds.add(_analyticsSession?['id'] as String?);
+    _saveAnalyticsEnd('completed', endedAt);
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.vibrate();
@@ -360,6 +426,7 @@ class FocusSessionController extends ChangeNotifier {
       coins: coins,
       logs: logs,
       seconds: seconds,
+      analyticsIds: List.of(_completedAnalyticsIds),
       intervals: intervals,
       constructionId: _constructionId,
     );
@@ -398,6 +465,7 @@ class FocusSessionController extends ChangeNotifier {
           coins: payout.coins,
           logs: payout.logs,
           sessionSeconds: payout.seconds,
+          analyticsSessionIds: payout.analyticsIds,
           sessionIntervals: payout.intervals,
           player: player,
           history: _history,
@@ -416,7 +484,8 @@ class FocusSessionController extends ChangeNotifier {
     }
   }
 
-  void _defeat() {
+  void _defeat({String reason = 'blacklist_penalty'}) {
+    if (isFocusing) _saveAnalyticsEnd('defeated', _clock(), reason: reason);
     _countdownTimer?.cancel();
     ForegroundTaskService.stopSessionNotification();
     HapticFeedback.heavyImpact();
@@ -448,6 +517,7 @@ class FocusSessionController extends ChangeNotifier {
     _pendingCoins = 0;
     _pendingLogs = 0;
     _completedSessionSeconds.clear();
+    _completedAnalyticsIds.clear();
     _completedSessionIntervals.clear();
     _focusIntervals.clear();
     _focusStartedAt = null;
@@ -488,6 +558,10 @@ class FocusSessionController extends ChangeNotifier {
     if (!canPause) return false;
     final now = _clock();
     _focusIntervals.add((start: _focusStartedAt!, end: now));
+    if (_analyticsSession != null) {
+      (_analyticsSession!['pauses'] as List).add(now.toUtc().toIso8601String());
+      AnalyticsJournal.instance.save(_analyticsSession!);
+    }
     _pauseEndsAt = now.add(const Duration(seconds: kMaxPauseSeconds));
     _phaseEndsAt = _phaseEndsAt!.add(const Duration(seconds: kMaxPauseSeconds));
     _isPaused = true;
@@ -509,6 +583,12 @@ class FocusSessionController extends ChangeNotifier {
   }
 
   void _resumePause(DateTime resumedAt) {
+    if (_analyticsSession != null) {
+      (_analyticsSession!['resumes'] as List).add(
+        resumedAt.toUtc().toIso8601String(),
+      );
+      AnalyticsJournal.instance.save(_analyticsSession!);
+    }
     _phaseEndsAt = _phaseEndsAt!.subtract(_pauseEndsAt!.difference(resumedAt));
     _focusStartedAt = resumedAt;
     _pauseEndsAt = null;
@@ -541,6 +621,7 @@ class FocusSessionController extends ChangeNotifier {
 
   /// Cancel current session and return to setup (no rewards, nothing recorded)
   void cancelSession() {
+    if (isFocusing) _saveAnalyticsEnd('cancelled', _clock());
     if (inBattle && _constructionId != null) {
       _defeat();
       return;
@@ -553,11 +634,18 @@ class FocusSessionController extends ChangeNotifier {
   void forceAbandonSession({String? reason}) {
     refreshTimer();
     if (!inBattle) return;
-    _defeat();
+    _defeat(reason: reason ?? 'voluntary_abandon');
   }
 
   /// Records an interruption event (e.g. app sent to background during focus)
   void recordInterruptionEvent() {
+    if (!isFocusing || _isPaused) return;
+    if (_analyticsSession != null) {
+      (_analyticsSession!['interruptions'] as List).add(
+        _clock().toUtc().toIso8601String(),
+      );
+      AnalyticsJournal.instance.save(_analyticsSession!);
+    }
     _history.recordInterruption();
     notifyListeners();
   }

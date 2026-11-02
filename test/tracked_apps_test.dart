@@ -109,6 +109,47 @@ void main() {
   test('analytics totals use the selected apps', () async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('fk_tracked_apps', jsonEncode({custom: 'Reader'}));
+    await prefs.setString(
+      'fk_analytics_v1_goals',
+      jsonEncode({'2020-01-01': 3600}),
+    );
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'isUsagePermission') return true;
+      if (call.method == 'queryEvents') {
+        final end = DateTime.fromMillisecondsSinceEpoch(
+          (call.arguments as Map)['end'] as int,
+        );
+        return [
+          for (var i = 8; i >= 1; i--) ...[
+            {
+              'packageName': custom,
+              'eventType': '1',
+              'timeStamp':
+                  '${DateTime(end.year, end.month, end.day - i, 10).millisecondsSinceEpoch}',
+            },
+            {
+              'packageName': custom,
+              'eventType': '2',
+              'timeStamp':
+                  '${DateTime(end.year, end.month, end.day - i, 12).millisecondsSinceEpoch}',
+            },
+            {
+              'packageName': facebook,
+              'eventType': '1',
+              'timeStamp':
+                  '${DateTime(end.year, end.month, end.day - i, 13).millisecondsSinceEpoch}',
+            },
+            {
+              'packageName': facebook,
+              'eventType': '2',
+              'timeStamp':
+                  '${DateTime(end.year, end.month, end.day - i, 14).millisecondsSinceEpoch}',
+            },
+          ],
+        ];
+      }
+      return null;
+    });
     final analytics = AnalyticsService();
     addTearDown(analytics.dispose);
     await analytics.refreshAnalytics();

@@ -26,8 +26,13 @@ class Settlement {
     required FocusHistoryService history,
     String? settlementId,
     List<List<FocusInterval>>? sessionIntervals,
+    List<String?>? analyticsSessionIds,
     String? constructionId,
   }) {
+    if (analyticsSessionIds != null &&
+        analyticsSessionIds.length != sessionSeconds.length) {
+      throw ArgumentError('Every session must have a matching analytics ID');
+    }
     if (sessionIntervals != null &&
         sessionIntervals.length != sessionSeconds.length) {
       throw ArgumentError('Every completed session must have focus intervals');
@@ -44,6 +49,7 @@ class Settlement {
           'coins': coins,
           'logs': logs,
           'seconds': sessionSeconds,
+          'analyticsIds': ?analyticsSessionIds,
           'constructionId': ?constructionId,
           if (sessionIntervals != null)
             'intervals': [
@@ -83,6 +89,10 @@ class Settlement {
       final id = settlement['id'] as String;
       final seconds = (settlement['seconds'] as List).cast<int>();
       final intervals = settlement['intervals'] as List?;
+      final analyticsIds = settlement['analyticsIds'] as List?;
+      if (analyticsIds != null && analyticsIds.length != seconds.length) {
+        throw const FormatException('Incomplete analytics session IDs');
+      }
       if (intervals != null && intervals.length != seconds.length) {
         throw const FormatException('Incomplete settlement timestamps');
       }
@@ -90,6 +100,7 @@ class Settlement {
         await history.recordCompletedSession(
           seconds[i],
           settlementId: '$id:history:$i',
+          analyticsSessionId: analyticsIds?[i] as String?,
           intervals: intervals == null
               ? null
               : [

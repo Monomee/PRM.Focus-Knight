@@ -1,36 +1,32 @@
+import 'dart:convert';
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:usage_stats/usage_stats.dart';
 
 import '../../../core/services/persistent_preferences.dart';
 import '../../telemetry/screen_time_tracker.dart';
+import 'analytics_calculations.dart';
+import 'analytics_journal.dart';
 import 'focus_history_service.dart';
 
-/// Data point representing a single day's correlation between social media usage and focus completion
 class DayCorrelationData {
-  final String dayLabel;
-  final DateTime date;
-  final double? socialHours;
-  final double focusHours;
-  final double completionRate;
-
   const DayCorrelationData({
     required this.dayLabel,
     required this.date,
     required this.socialHours,
     required this.focusHours,
     required this.completionRate,
+    this.hasGoal = false,
   });
+  final String dayLabel;
+  final DateTime date;
+  final double? socialHours;
+  final double focusHours, completionRate;
+  final bool hasGoal;
 }
 
-/// Data model for Distraction Velocity (Tần suất bồn chồn)
 class DistractionVelocityData {
-  final double? velocityPerHour;
-  final int totalInterruptions;
-  final double focusWorkHours;
-  final String levelKey;
-  final String levelLabel;
-  final List<double?> weeklyTrend;
-
   const DistractionVelocityData({
     required this.velocityPerHour,
     required this.totalInterruptions,
@@ -38,276 +34,472 @@ class DistractionVelocityData {
     required this.levelKey,
     required this.levelLabel,
     required this.weeklyTrend,
+    this.previousRate,
+    this.dates = const [],
+    this.dailySeconds = const [],
+    this.dailyEvents = const [],
   });
+  final double? velocityPerHour, previousRate;
+  final int totalInterruptions;
+  final double focusWorkHours;
+  final String levelKey, levelLabel;
+  final List<double?> weeklyTrend;
+  final List<DateTime> dates;
+  final List<double> dailySeconds;
+  final List<int> dailyEvents;
+  double? get changePercent =>
+      previousRate == null || previousRate == 0 || velocityPerHour == null
+      ? null
+      : (velocityPerHour! / previousRate! - 1) * 100;
 }
 
-/// Data model for Golden Hours (Khung giờ vàng)
+class GoldenCell {
+  final sessions = <String>{};
+  double seconds = 0, weightedScore = 0;
+  double? get score =>
+      sessions.length < 3 || seconds <= 0 ? null : weightedScore / seconds;
+}
+
 class GoldenHoursData {
-  final Map<String, double>
-  blockProductivity; // e.g. {'05:00 - 08:00': 0.65, ...}
-  final String peakTimeSlot; // e.g. '08:00 - 11:30'
-  final double peakEfficiency; // e.g. 0.94 (94%)
-  final String title;
-  final String recommendation;
+  GoldenHoursData(this.cells);
+  final List<GoldenCell> cells;
+  int? get best {
+    int? result;
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].score != null &&
+          (result == null || cells[i].score! > cells[result].score!)) {
+        result = i;
+      }
+    }
+    return result;
+  }
 
-  const GoldenHoursData({
-    required this.blockProductivity,
-    required this.peakTimeSlot,
-    required this.peakEfficiency,
-    required this.title,
-    required this.recommendation,
-  });
+  String get peakTimeSlot =>
+      best == null ? '' : '${weekdays[best! % 7]} ${slotLabels[best! ~/ 7]}';
+  double get peakEfficiency => best == null ? 0 : cells[best!].score!;
+  String get recommendation =>
+      '${best == null ? 'Chưa đủ dữ liệu: ' : ''}Cần ít nhất 3 phiên/ô. Điểm = 50% hoàn thành + 50% thời gian thực tế/mục tiêu phiên, tính trung bình có trọng số theo số giây thuộc ô.';
+  Map<String, double> get blockProductivity => {
+    for (var s = 0; s < 7; s++)
+      slotLabels[s]: cells
+          .skip(s * 7)
+          .take(7)
+          .map((c) => c.score ?? 0)
+          .reduce(math.max),
+  };
 }
 
-/// Service aggregating analytics: Correlation Analysis, Distraction Velocity, and Golden Hours
 class AnalyticsService extends ChangeNotifier {
   static AnalyticsService? _instance;
   static AnalyticsService get instance => _instance ??= AnalyticsService();
-
-  final FocusHistoryService _history = FocusHistoryService.instance;
-
-  List<DayCorrelationData> _correlationDays = [];
-  List<DayCorrelationData> get correlationDays =>
-      List.unmodifiable(_correlationDays);
-
-  DistractionVelocityData _distractionVelocity = const DistractionVelocityData(
+  AnalyticsService({
+    FocusHistoryService? history,
+    DateTime Function()? clock,
+    this.minimumCorrelationPairs = 7,
+  }) : _history = history ?? FocusHistoryService.instance,
+       _clock = clock ?? DateTime.now,
+       _previewUsage = null {
+    _history!.addListener(_changed);
+    AnalyticsJournal.instance.addListener(_changed);
+  }
+  AnalyticsService.fromSamples({
+    required List<SessionSample> samples,
+    required Map<String, int?> dailyGoals,
+    required Map<String, double> appUsageHours,
+    required DateTime now,
+    this.minimumCorrelationPairs = 7,
+  }) : _history = null,
+       _clock = (() => now),
+       _previewUsage = Map.unmodifiable(appUsageHours) {
+    sessions = List.unmodifiable(samples);
+    goals = Map.of(dailyGoals);
+    _aggregateSessions(const {}, now);
+    _updatePreviewCorrelation();
+  }
+  final FocusHistoryService? _history;
+  final Map<String, double>? _previewUsage;
+  bool get isDemo => _previewUsage != null;
+  DateTime get referenceDate => _clock();
+  final DateTime Function() _clock;
+  final int minimumCorrelationPairs;
+  bool isLoading = false;
+  String? error;
+  int correlationRange = 7;
+  Map<String, DailyFocus> days = {};
+  List<SessionSample> sessions = [];
+  Map<String, dynamic> goals = {};
+  List<DayCorrelationData> correlationDays = [];
+  GoldenHoursData goldenHours = GoldenHoursData(
+    List.generate(49, (_) => GoldenCell()),
+  );
+  DistractionVelocityData distractionVelocity = const DistractionVelocityData(
     velocityPerHour: null,
     totalInterruptions: 0,
     focusWorkHours: 0,
     levelKey: 'NO_DATA',
-    levelLabel: 'CHƯA ĐỦ DỮ LIỆU',
+    levelLabel: 'Chưa đủ dữ liệu',
     weeklyTrend: [],
   );
-  DistractionVelocityData get distractionVelocity => _distractionVelocity;
-
-  GoldenHoursData _goldenHours = const GoldenHoursData(
-    blockProductivity: {
-      '00h - 05h': 0,
-      '05h - 08h': 0,
-      '08h - 11h': 0,
-      '11h - 14h': 0,
-      '14h - 17h': 0,
-      '17h - 21h': 0,
-      '21h - 24h': 0,
-    },
-    peakTimeSlot: '',
-    peakEfficiency: 0,
-    title: 'Khung Giờ Vàng Của Hiệp Sĩ',
-    recommendation: 'Chưa đủ dữ liệu tập trung để xác định khung giờ vàng.',
-  );
-  GoldenHoursData get goldenHours => _goldenHours;
-
-  bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
-  AnalyticsService() {
-    refreshAnalytics();
+  SurvivalEstimate endurance = SurvivalEstimate.calculate([]);
+  double? uninterruptedRate;
+  int invalidSessions = 0;
+  final _sampleCache = <String, ({String raw, SessionSample? sample})>{};
+  Future<void>? _refresh;
+  bool _dirty = false, _disposed = false;
+  void _changed() {
+    if (_refresh != null) {
+      _dirty = true;
+    } else {
+      refreshAnalytics();
+    }
   }
 
-  /// Refreshes all 3 analytics modules
-  Future<void> refreshAnalytics() async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      await Future.wait([
-        _computeCorrelationData(),
-        _computeDistractionVelocity(),
-        _computeGoldenHours(),
-      ]);
-    } catch (_) {}
-
-    _isLoading = false;
-    notifyListeners();
+  Future<void> refreshAnalytics() {
+    if (isDemo) {
+      _updatePreviewCorrelation();
+      notifyListeners();
+      return Future.value();
+    }
+    return _refresh ??= _load().whenComplete(() {
+      _refresh = null;
+      if (_dirty && !_disposed) {
+        _dirty = false;
+        refreshAnalytics();
+      }
+    });
   }
 
-  /// 1. Correlation Analysis: Computes 7-day social media hours vs focus target completion rate
-  Future<void> _computeCorrelationData() async {
-    final now = DateTime.now();
-    final List<DayCorrelationData> days = [];
-    const weekdayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  void _updatePreviewCorrelation() {
+    final today = dayOf(_clock());
+    correlationDays = [
+      for (var i = correlationRange; i >= 1; i--)
+        _previewDay(nextDay(today, -i)),
+    ];
+  }
 
-    // Target daily focus duration baseline: 75 minutes (1.25h)
-    const targetFocusSec = 75 * 60;
-
-    bool usagePermission = false;
-    final trackedApps = ScreenTimeTracker.readTrackedApps(
-      await loadPersistentPreferences(),
+  DayCorrelationData _previewDay(DateTime date) {
+    final value = day(date);
+    return DayCorrelationData(
+      dayLabel: weekdays[date.weekday - 1],
+      date: date,
+      socialHours: _previewUsage![dateKey(date)],
+      focusHours: value.seconds / 3600,
+      completionRate: value.progress ?? 0,
+      hasGoal: value.goalSeconds != null,
     );
-    try {
-      usagePermission = await UsageStats.checkUsagePermission() ?? false;
-    } catch (_) {}
+  }
 
-    for (int i = 6; i >= 0; i--) {
-      final date = now.subtract(Duration(days: i));
-      final dayLabel = weekdayNames[date.weekday % 7];
-      final isToday = i == 0;
-      final actualFocusSec = await _history.getFocusSecondsForDate(date);
-      final focusHours = actualFocusSec / 3600.0;
-      double? socialHours;
+  Future<void> setCorrelationRange(int range) async {
+    if (range != 7 && range != 30) throw ArgumentError('7 hoặc 30 ngày');
+    correlationRange = range;
+    _changed();
+    while (_refresh != null) {
+      await _refresh;
+    }
+  }
 
-      if (usagePermission) {
-        try {
-          final startOfDay = DateTime(date.year, date.month, date.day);
-          final endOfDay = isToday
-              ? now
-              : DateTime(date.year, date.month, date.day, 23, 59, 59);
-          final stats = await UsageStats.queryAndAggregateUsageStats(
-            startOfDay,
-            endOfDay,
-          );
-          int totalSocialMs = 0;
-          for (final pkg in trackedApps.keys) {
-            totalSocialMs += stats[pkg]?.totalTimeInForegroundMs ?? 0;
+  int? goalFor(DateTime date) {
+    final keys =
+        goals.keys.where((k) => k.compareTo(dateKey(date)) <= 0).toList()
+          ..sort();
+    final value = keys.isEmpty ? null : goals[keys.last];
+    return value is int && value > 0 ? value : null;
+  }
+
+  DailyFocus day(DateTime date) =>
+      days[dateKey(date)] ?? DailyFocus(goalSeconds: goalFor(date));
+  ({int current, int longest}) get streaks =>
+      goalStreaks({...days, dateKey(_clock()): day(_clock())}, _clock());
+  double? monthlyRate(DateTime month) {
+    var total = 0, achieved = 0;
+    final today = dayOf(_clock());
+    for (
+      var d = DateTime(month.year, month.month);
+      d.month == month.month;
+      d = nextDay(d)
+    ) {
+      final value = day(d);
+      if (d.isAfter(today) ||
+          value.goalSeconds == null ||
+          (d == today && !value.achieved)) {
+        continue;
+      }
+      total++;
+      if (value.achieved) achieved++;
+    }
+    return total == 0 ? null : achieved / total;
+  }
+
+  void _aggregateSessions(Map legacy, DateTime now) {
+    final today = dayOf(now);
+    final actual = <String, DailyFocus>{};
+    final creditedIds = (legacy['analyticsIds'] as List? ?? [])
+        .cast<String>()
+        .toSet();
+    final creditBreakdowns = legacy['analyticsCredits'] as Map? ?? {};
+    final credited = <String, DailyFocus>{};
+    final monitoredSeconds = <String, double>{}, events = <String, int>{};
+    goldenHours = GoldenHoursData(List.generate(49, (_) => GoldenCell()));
+    final observations = <SurvivalObservation>[];
+    var monitored = 0, uninterrupted = 0;
+    for (final s in sessions) {
+      final score =
+          0.5 * (s.completed ? 1 : 0) +
+          0.5 * (s.seconds / s.target).clamp(0, 1);
+      for (final interval in s.intervals) {
+        for (final part in splitInterval(interval.start, interval.end)) {
+          final key = dateKey(part.date);
+          (actual[key] ??= DailyFocus(
+            goalSeconds: goalFor(part.date),
+          )).seconds += part.seconds;
+          if (creditedIds.contains(s.id) &&
+              !creditBreakdowns.containsKey(s.id)) {
+            (credited[key] ??= DailyFocus()).seconds += part.seconds;
           }
-          socialHours = totalSocialMs / 3600000.0;
-        } catch (_) {}
+          if (s.monitored) {
+            monitoredSeconds[key] = (monitoredSeconds[key] ?? 0) + part.seconds;
+          }
+          if (!part.date.isBefore(nextDay(today, -29)) &&
+              !part.date.isAfter(today)) {
+            final cell =
+                goldenHours.cells[part.slot * 7 + part.date.weekday - 1];
+            cell.sessions.add(s.id);
+            cell.seconds += part.seconds;
+            cell.weightedScore += score * part.seconds;
+          }
+        }
       }
-
-      final completionRate = (focusHours / (targetFocusSec / 3600.0)).clamp(
-        0.0,
-        1.0,
+      final terminal = actual.putIfAbsent(
+        dateKey(s.end),
+        () => DailyFocus(goalSeconds: goalFor(s.end)),
       );
-
-      days.add(
-        DayCorrelationData(
-          dayLabel: dayLabel,
-          date: date,
-          socialHours: socialHours == null
-              ? null
-              : double.parse(socialHours.toStringAsFixed(1)),
-          focusHours: double.parse(focusHours.toStringAsFixed(1)),
-          completionRate: double.parse(completionRate.toStringAsFixed(2)),
-        ),
-      );
-    }
-
-    _correlationDays = days;
-  }
-
-  /// 2. Distraction Velocity: Measures touches / exits / interruptions per focus hour
-  Future<void> _computeDistractionVelocity() async {
-    final now = DateTime.now();
-    final todayFocusSec = await _history.getFocusSecondsForDate(now);
-    final todayWorkHours = todayFocusSec / 3600.0;
-    final count = await _history.getInterruptionsForDate(now);
-    final velocity = todayWorkHours > 0
-        ? double.parse((count / todayWorkHours).toStringAsFixed(1))
-        : null;
-
-    String levelKey = 'NO_DATA';
-    String levelLabel = 'CHƯA ĐỦ DỮ LIỆU';
-
-    if (velocity != null) {
-      levelKey = 'DEEP_FLOW';
-      levelLabel = 'TẬP TRUNG SÂU';
-      if (velocity > 4.0) {
-        levelKey = 'HIGH_RESTLESS';
-        levelLabel = 'BỒN CHỒN CAO';
-      } else if (velocity >= 2.0) {
-        levelKey = 'MODERATE';
-        levelLabel = 'BÌNH THƯỜNG';
+      if (s.completed) {
+        terminal.completed++;
+        if (creditedIds.contains(s.id) && !creditBreakdowns.containsKey(s.id)) {
+          (credited[dateKey(s.end)] ??= DailyFocus()).completed++;
+        }
+      } else {
+        terminal.incomplete++;
+      }
+      if (creditedIds.contains(s.id) && creditBreakdowns.containsKey(s.id)) {
+        final credit = creditBreakdowns[s.id] as Map;
+        for (final e in (credit['days'] as Map).entries) {
+          (credited[e.key as String] ??= DailyFocus()).seconds +=
+              (e.value as num).toDouble();
+        }
+        (credited[credit['completedDay'] as String] ??= DailyFocus())
+            .completed++;
+      }
+      if (s.monitored) {
+        for (final t in s.interruptions) {
+          final key = dateKey(t);
+          events[key] = (events[key] ?? 0) + 1;
+        }
+        if (!s.end.isBefore(nextDay(today, -29)) && !s.end.isAfter(now)) {
+          monitored++;
+          observations.add(s.observation);
+          if (s.completed && s.interruptions.isEmpty && s.pauses.isEmpty) {
+            uninterrupted++;
+          }
+        }
       }
     }
-
-    final trend = <double?>[];
-    for (int i = 6; i >= 0; i--) {
-      final date = now.subtract(Duration(days: i));
-      final focusSeconds = await _history.getFocusSecondsForDate(date);
-      final interruptions = await _history.getInterruptionsForDate(date);
-      trend.add(
-        focusSeconds > 0
-            ? double.parse(
-                (interruptions / (focusSeconds / 3600.0)).toStringAsFixed(1),
-              )
-            : null,
+    for (final key in credited.keys) {
+      actual.putIfAbsent(
+        key,
+        () => DailyFocus(goalSeconds: goalFor(DateTime.parse(key))),
       );
     }
-
-    _distractionVelocity = DistractionVelocityData(
-      velocityPerHour: velocity,
+    for (final e in actual.entries) {
+      final old = days[e.key];
+      e.value.seconds =
+          (old?.seconds ?? 0) +
+          e.value.seconds -
+          (credited[e.key]?.seconds ?? 0);
+      e.value.completed =
+          (old?.completed ?? 0) +
+          e.value.completed -
+          (credited[e.key]?.completed ?? 0);
+      days[e.key] = e.value;
+    }
+    endurance = SurvivalEstimate.calculate(observations);
+    uninterruptedRate = monitored == 0 ? null : uninterrupted / monitored;
+    double sumSeconds(int from, int to) => [
+      for (var i = from; i <= to; i++)
+        monitoredSeconds[dateKey(nextDay(today, i))] ?? 0,
+    ].fold(0, (a, b) => a + b);
+    int sumEvents(int from, int to) => [
+      for (var i = from; i <= to; i++) events[dateKey(nextDay(today, i))] ?? 0,
+    ].fold(0, (a, b) => a + b);
+    final sec = sumSeconds(-6, 0), count = sumEvents(-6, 0);
+    distractionVelocity = DistractionVelocityData(
+      velocityPerHour: distractionRate(count, sec),
       totalInterruptions: count,
-      focusWorkHours: double.parse(todayWorkHours.toStringAsFixed(1)),
-      levelKey: levelKey,
-      levelLabel: levelLabel,
-      weeklyTrend: trend,
+      focusWorkHours: sec / 3600,
+      levelKey: sec > 0 ? 'OBSERVED' : 'NO_DATA',
+      levelLabel: sec > 0 ? 'Lượt mở ứng dụng đã chọn' : 'Chưa đủ dữ liệu',
+      weeklyTrend: [
+        for (var i = -6; i <= 0; i++)
+          distractionRate(
+            events[dateKey(nextDay(today, i))] ?? 0,
+            monitoredSeconds[dateKey(nextDay(today, i))] ?? 0,
+          ),
+      ],
+      previousRate: distractionRate(sumEvents(-13, -7), sumSeconds(-13, -7)),
+      dates: [for (var i = -6; i <= 0; i++) nextDay(today, i)],
+      dailySeconds: [
+        for (var i = -6; i <= 0; i++)
+          monitoredSeconds[dateKey(nextDay(today, i))] ?? 0,
+      ],
+      dailyEvents: [
+        for (var i = -6; i <= 0; i++) events[dateKey(nextDay(today, i))] ?? 0,
+      ],
     );
   }
 
-  /// 3. Golden Hours: Computes peak productivity blocks in the week
-  Future<void> _computeGoldenHours() async {
-    final hourlyStats = await _history.getHourlyFocusStats();
-
-    // Map 24 hours into 6 distinct productivity blocks
-    // Block 1: 05h - 08h
-    // Block 2: 08h - 11h
-    // Block 3: 11h - 14h
-    // Block 4: 14h - 17h
-    // Block 5: 17h - 21h
-    // Block 6: 21h - 24h
-    final Map<String, int> blockMinutes = {
-      '00h - 05h': 0,
-      '05h - 08h': 0,
-      '08h - 11h': 0,
-      '11h - 14h': 0,
-      '14h - 17h': 0,
-      '17h - 21h': 0,
-      '21h - 24h': 0,
-    };
-
-    hourlyStats.forEach((hour, sec) {
-      final mins = sec ~/ 60;
-      if (hour < 5) {
-        blockMinutes['00h - 05h'] = (blockMinutes['00h - 05h'] ?? 0) + mins;
-      } else if (hour < 8) {
-        blockMinutes['05h - 08h'] = (blockMinutes['05h - 08h'] ?? 0) + mins;
-      } else if (hour >= 8 && hour < 11) {
-        blockMinutes['08h - 11h'] = (blockMinutes['08h - 11h'] ?? 0) + mins;
-      } else if (hour >= 11 && hour < 14) {
-        blockMinutes['11h - 14h'] = (blockMinutes['11h - 14h'] ?? 0) + mins;
-      } else if (hour >= 14 && hour < 17) {
-        blockMinutes['14h - 17h'] = (blockMinutes['14h - 17h'] ?? 0) + mins;
-      } else if (hour >= 17 && hour < 21) {
-        blockMinutes['17h - 21h'] = (blockMinutes['17h - 21h'] ?? 0) + mins;
-      } else if (hour >= 21) {
-        blockMinutes['21h - 24h'] = (blockMinutes['21h - 24h'] ?? 0) + mins;
+  Future<void> _load() async {
+    final range = correlationRange;
+    isLoading = true;
+    if (!_disposed) notifyListeners();
+    try {
+      final prefs = await loadPersistentPreferences();
+      final now = _clock(), today = dayOf(_clock());
+      goals = Map<String, dynamic>.from(
+        jsonDecode(prefs.getString(AnalyticsJournal.goalsKey) ?? '{}') as Map,
+      );
+      final legacy = jsonDecode(
+        prefs.getString('fk_history_settlement_state') ?? '{}',
+      ) as Map;
+      final legacyDays = Map<String, dynamic>.from(
+        legacy['days'] as Map? ?? {},
+      );
+      final legacyCounts = Map<String, dynamic>.from(
+        legacy['counts'] as Map? ?? {},
+      );
+      days = {};
+      sessions = [];
+      invalidSessions = 0;
+      for (final key in prefs.getKeys()) {
+        if (key.startsWith('fk_focus_sec_')) {
+          legacyDays.putIfAbsent(
+            key.substring(13),
+            () => prefs.getInt(key) ?? 0,
+          );
+        }
+        if (key.startsWith('fk_session_count_')) {
+          legacyCounts.putIfAbsent(
+            key.substring(17),
+            () => prefs.getInt(key) ?? 0,
+          );
+        }
+        if (key.startsWith(AnalyticsJournal.prefix)) {
+          final raw = prefs.getString(key)!;
+          final cached = _sampleCache[key];
+          final sample = cached?.raw == raw
+              ? cached?.sample
+              : SessionSample.parse(raw);
+          _sampleCache[key] = (raw: raw, sample: sample);
+          if (sample != null) {
+            sessions.add(sample);
+          } else {
+            invalidSessions++;
+          }
+        }
       }
-    });
-
-    final Map<String, double> normalizedBlocks = {};
-
-    int maxMinutes = 0;
-    blockMinutes.forEach((_, m) {
-      if (m > maxMinutes) maxMinutes = m;
-    });
-
-    blockMinutes.forEach((key, m) {
-      final ratio = maxMinutes > 0 ? m / maxMinutes : 0.0;
-      normalizedBlocks[key] = double.parse(ratio.toStringAsFixed(2));
-    });
-
-    String bestBlock = '';
-    double highestRate = 0.0;
-    int bestMinutes = 0;
-    blockMinutes.forEach((block, minutes) {
-      if (minutes > bestMinutes) {
-        bestMinutes = minutes;
-        highestRate = normalizedBlocks[block]!;
-        bestBlock = block;
+      for (final e in legacyDays.entries) {
+        final date = DateTime.tryParse(e.key);
+        if (date != null && e.value is num && (e.value as num) >= 0) {
+          days[e.key] = DailyFocus(
+            seconds: (e.value as num).toDouble(),
+            goalSeconds: goalFor(date),
+            completed: legacyCounts[e.key] as int? ?? 0,
+          );
+        }
       }
-    });
+      _aggregateSessions(legacy, now);
+      final apps = ScreenTimeTracker.readTrackedApps(prefs).keys.toSet();
+      var permission = false;
+      try {
+        permission = await UsageStats.checkUsagePermission() ?? false;
+      } catch (_) {
+        /* Unsupported platform. */
+      }
+      List<EventUsageInfo> usage = [];
+      if (permission && apps.isNotEmpty && goals.isNotEmpty) {
+        try {
+          usage = await UsageStats.queryEvents(
+            nextDay(today, -range - 1),
+            today,
+          );
+        } catch (_) {
+          permission = false;
+        }
+      }
+      final result = <DayCorrelationData>[];
+      for (var i = range; i >= 1; i--) {
+        final date = nextDay(today, -i), d = day(nextDay(today, -i));
+        double? hours;
+        if (permission && apps.isNotEmpty && d.goalSeconds != null) {
+          try {
+            // Empty OS history is unknown, not proof of zero usage.
+            final seeded = usage.any(
+              (e) =>
+                  (int.tryParse(e.timeStamp ?? '') ??
+                      date.millisecondsSinceEpoch) <
+                  date.millisecondsSinceEpoch,
+            );
+            if (seeded &&
+                usage.any((e) {
+                  final t = int.tryParse(e.timeStamp ?? '');
+                  return t != null &&
+                      const {1, 2, 15, 16, 17, 18}.contains(
+                        e.eventTypeValue ?? int.tryParse(e.eventType ?? ''),
+                      ) &&
+                      t >= date.millisecondsSinceEpoch &&
+                      t < nextDay(date).millisecondsSinceEpoch;
+                })) {
+              final totals = ScreenTimeTracker.usageDurations(
+                usage,
+                start: date,
+                end: nextDay(date),
+                trackedPackages: apps,
+              );
+              hours =
+                  totals.values.fold<double>(
+                    0,
+                    (a, b) => a + b.inMilliseconds,
+                  ) /
+                  3600000;
+            }
+          } catch (_) {
+            /* Missing OS retention or permission. */
+          }
+        }
+        result.add(
+          DayCorrelationData(
+            dayLabel: weekdays[date.weekday - 1],
+            date: date,
+            socialHours: hours,
+            focusHours: d.seconds / 3600,
+            completionRate: d.progress ?? 0,
+            hasGoal: d.goalSeconds != null,
+          ),
+        );
+      }
+      correlationDays = result;
+      error = AnalyticsJournal.instance.error;
+    } catch (e) {
+      error = 'Không tải được dữ liệu phân tích: $e';
+    }
+    isLoading = false;
+    if (!_disposed) notifyListeners();
+  }
 
-    final peakTimeSlot = bestBlock.replaceAll('h', ':00');
-    final hasData = maxMinutes > 0;
-
-    _goldenHours = GoldenHoursData(
-      blockProductivity: normalizedBlocks,
-      peakTimeSlot: hasData ? peakTimeSlot : '',
-      peakEfficiency: highestRate,
-      title: 'Khung Giờ Vàng Của Hiệp Sĩ',
-      recommendation: hasData
-          ? 'Bạn tập trung nhiều nhất vào khung giờ $peakTimeSlot. Hãy cân nhắc xếp các task quan trọng vào thời gian này.'
-          : 'Chưa đủ dữ liệu tập trung để xác định khung giờ vàng.',
-    );
+  @override
+  void dispose() {
+    _disposed = true;
+    _history?.removeListener(_changed);
+    if (!isDemo) AnalyticsJournal.instance.removeListener(_changed);
+    super.dispose();
   }
 }

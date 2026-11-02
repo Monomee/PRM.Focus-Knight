@@ -142,7 +142,10 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
 
     _player = PlayerState();
     _initProgress();
-    _sessionController = FocusSessionController(player: _player);
+    _sessionController = FocusSessionController(
+      player: _player,
+      analyticsMonitoring: () => _screenTimeTracker.hasPermission,
+    );
     _wasInBattle = _sessionController.inBattle;
     _sessionController.addListener(_handleBattleState);
     _screenTimeTracker = ScreenTimeTracker();
@@ -152,6 +155,9 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   }
 
   void _syncMonitoring() {
+    if (!_screenTimeTracker.hasPermission) {
+      _sessionController.invalidateAnalyticsMonitoring();
+    }
     if (_screenTimeTracker.hasPermission && _overlayService.isAppInForeground) {
       unawaited(ForegroundTaskService.ensureMonitoring());
     }
@@ -202,7 +208,10 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
         final fg = await _screenTimeTracker.foregroundSinceLeft();
         if (_overlayService.isAppInForeground) return;
         _sessionController.refreshTimer();
-        if (fg != null &&
+        if (!_screenTimeTracker.isTrackedPackage(fg)) {
+          _interruptionCounted = false;
+        }
+        if (_screenTimeTracker.isTrackedPackage(fg) &&
             !_interruptionCounted &&
             _sessionController.isFocusing) {
           _interruptionCounted = true;
@@ -229,6 +238,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+    _sessionController.recordLifecycleEvent(state.name);
 
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {

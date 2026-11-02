@@ -14,6 +14,7 @@ class _UnavailableHistory extends FocusHistoryService {
   Future<void> recordCompletedSession(
     int durationSeconds, {
     String? settlementId,
+    String? analyticsSessionId,
     List<FocusInterval>? intervals,
   }) async {
     throw StateError('storage unavailable');
@@ -125,7 +126,7 @@ void main() {
   );
 
   test(
-    'review 7: rounding does not select a smaller golden hour block',
+    'review 7: legacy totals cannot invent golden hour efficiency',
     () async {
       SharedPreferences.setMockInitialValues({
         'fk_hourly_focus_12': 599 * 60,
@@ -133,7 +134,11 @@ void main() {
       });
       final analytics = AnalyticsService();
       await analytics.refreshAnalytics();
-      expect(analytics.goldenHours.peakTimeSlot, '21:00 - 24:00');
+      expect(analytics.goldenHours.peakTimeSlot, isEmpty);
+      expect(
+        analytics.goldenHours.cells.every((cell) => cell.score == null),
+        isTrue,
+      );
     },
   );
 }

@@ -78,23 +78,20 @@ void main() {
       expect(golden.recommendation, contains('Chưa đủ dữ liệu'));
     });
 
-    test(
-      'Maps winning golden hour block directly and separates midnight',
-      () async {
-        SharedPreferences.setMockInitialValues({
-          'fk_hourly_focus_1': 1200,
-          'fk_hourly_focus_12': 3600,
-          'fk_hourly_focus_22': 1800,
-        });
-        final analytics = AnalyticsService();
-        await analytics.refreshAnalytics();
+    test('Legacy all-time hours cannot establish weekday efficiency', () async {
+      SharedPreferences.setMockInitialValues({
+        'fk_hourly_focus_1': 1200,
+        'fk_hourly_focus_12': 3600,
+        'fk_hourly_focus_22': 1800,
+      });
+      final analytics = AnalyticsService();
+      await analytics.refreshAnalytics();
 
-        final golden = analytics.goldenHours;
-        expect(golden.peakTimeSlot, '11:00 - 14:00');
-        expect(golden.blockProductivity['00h - 05h'], closeTo(0.33, 0.01));
-        expect(golden.blockProductivity['21h - 24h'], 0.5);
-      },
-    );
+      final golden = analytics.goldenHours;
+      expect(golden.peakTimeSlot, isEmpty);
+      expect(golden.cells, hasLength(49));
+      expect(golden.cells.every((cell) => cell.score == null), isTrue);
+    });
 
     testWidgets(
       'DistractionVelocityCard renders without overflow on narrow 340px viewport',
