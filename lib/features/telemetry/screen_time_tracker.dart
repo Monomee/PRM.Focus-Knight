@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,22 +47,68 @@ class ScreenTimeTracker extends ChangeNotifier {
   Map<String, Duration> get appDistractions =>
       Map.unmodifiable(_appDistractions);
 
-  int _dailyLimitMinutes = 60;
-  int get dailyLimitMinutes => _dailyLimitMinutes;
-
   bool _strictModeEnabled = false;
   bool get strictModeEnabled => _strictModeEnabled;
+
+  Map<String, String> _trackedApps = Map.of(BlacklistConstants.appNames);
+  Map<String, String> get trackedApps => Map.unmodifiable(_trackedApps);
+  bool isTrackedPackage(String? package) => _trackedApps.containsKey(package);
+  String appNameFor(String? package) => _trackedApps[package] ?? package ?? '';
+
+  static Map<String, String> readTrackedApps(SharedPreferences prefs) {
+    final raw = prefs.getString('fk_tracked_apps');
+    return raw == null
+        ? Map.of(BlacklistConstants.appNames)
+        : Map<String, String>.from(jsonDecode(raw) as Map);
+  }
+
+  Future<void> setTrackedApps(Map<String, String> apps) async {
+    final packages = RegExp(
+      r'^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$',
+    );
+    if (apps.entries.any(
+      (entry) =>
+          !packages.hasMatch(entry.key) ||
+          entry.value.trim().isEmpty ||
+          const {
+            'com.example.test_dart',
+            'com.android.settings',
+            'com.android.systemui',
+          }.contains(entry.key),
+    )) {
+      throw ArgumentError('Invalid tracked application');
+    }
+    final next = Map<String, String>.of(apps);
+    await ready;
+    final prefs = await loadPersistentPreferences();
+    try {
+      if (!await prefs.setString('fk_tracked_apps', jsonEncode(next))) {
+        throw StateError('Failed to save tracked applications');
+      }
+    } catch (_) {
+      invalidatePreferenceCache();
+      rethrow;
+    }
+    _trackedApps = next;
+    _appLimits.clear();
+    for (final pkg in next.keys) {
+      final limit = prefs.getInt('fk_app_limit_$pkg');
+      if (limit != null) _appLimits[pkg] = limit;
+    }
+    _appDistractions.removeWhere((pkg, _) => !isTrackedPackage(pkg));
+    _totalDistractionToday = _appDistractions.values.fold(
+      Duration.zero,
+      (a, b) => a + b,
+    );
+    if (!_disposed) notifyListeners();
+    await refreshUsageStats();
+  }
 
   final Map<String, int> _appLimits = {};
   Map<String, int> get appLimits => Map.unmodifiable(_appLimits);
 
-  /// Gets the individual daily limit in minutes for a specific package (falls back to global limit)
-  int getAppLimit(String pkg) => _appLimits[pkg] ?? _dailyLimitMinutes;
-
-  /// Whether distraction screen-time today has exceeded the daily global limit
-  bool get isLimitExceeded =>
-      _dailyLimitMinutes > 0 &&
-      _totalDistractionToday.inMinutes >= _dailyLimitMinutes;
+  /// Gets the individual daily limit in minutes for a specific package (defaults to 30 minutes)
+  int getAppLimit(String pkg) => _appLimits[pkg] ?? 30;
 
   /// Whether a specific app has exceeded its individual daily limit
   bool isAppLimitExceeded(String pkg) {
@@ -77,23 +124,6 @@ class ScreenTimeTracker extends ChangeNotifier {
     if (limit <= 0) return 0.0;
     final dur = _appDistractions[pkg] ?? Duration.zero;
     return (dur.inSeconds / (limit * 60)).clamp(0.0, 1.0);
-  }
-
-  /// Progress ratio towards the daily global limit clamped between 0.0 and 1.0
-  double get limitProgress => _dailyLimitMinutes > 0
-      ? (_totalDistractionToday.inSeconds / (_dailyLimitMinutes * 60)).clamp(
-          0.0,
-          1.0,
-        )
-      : 0.0;
-
-  /// Remaining duration before hitting the daily limit
-  Duration get remainingTime {
-    if (_dailyLimitMinutes <= 0) return Duration.zero;
-    final limit = Duration(minutes: _dailyLimitMinutes);
-    return limit > _totalDistractionToday
-        ? limit - _totalDistractionToday
-        : Duration.zero;
   }
 
   Timer? _periodicTracker;
@@ -121,9 +151,10 @@ class ScreenTimeTracker extends ChangeNotifier {
   Future<void> _loadPersistedLimit() async {
     try {
       final prefs = await loadPersistentPreferences();
-      _dailyLimitMinutes = prefs.getInt('fk_daily_limit_minutes') ?? 60;
+      _trackedApps = readTrackedApps(prefs);
       _strictModeEnabled = prefs.getBool('fk_strict_mode') ?? false;
-      for (final pkg in BlacklistConstants.defaultBlacklist) {
+      _appLimits.clear();
+      for (final pkg in _trackedApps.keys) {
         final lim = prefs.getInt('fk_app_limit_$pkg');
         if (lim != null) {
           _appLimits[pkg] = lim;
@@ -138,15 +169,6 @@ class ScreenTimeTracker extends ChangeNotifier {
     await prefs.reload();
     _appLimits.clear();
     await _loadPersistedLimit();
-  }
-
-  Future<void> setDailyLimitMinutes(int minutes) async {
-    _dailyLimitMinutes = minutes;
-    notifyListeners();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('fk_daily_limit_minutes', minutes);
-    } catch (_) {}
   }
 
   Future<void> setStrictModeEnabled(bool enabled) async {
@@ -268,6 +290,7 @@ class ScreenTimeTracker extends ChangeNotifier {
         _usageEvents.values,
         start: startOfDay,
         end: now,
+        trackedPackages: _trackedApps.keys,
       );
       _appDistractions.clear();
       _appDistractions.addAll(usage);
@@ -284,7 +307,9 @@ class ScreenTimeTracker extends ChangeNotifier {
     Iterable<EventUsageInfo> events, {
     required DateTime start,
     required DateTime end,
+    Iterable<String> trackedPackages = BlacklistConstants.defaultBlacklist,
   }) {
+    final tracked = trackedPackages.toSet();
     final startMs = start.millisecondsSinceEpoch;
     final endMs = end.millisecondsSinceEpoch;
     final ordered =
@@ -300,7 +325,7 @@ class ScreenTimeTracker extends ChangeNotifier {
     void accumulate(int until) {
       final time = until.clamp(startMs, endMs);
       final pkg = state.activePackage;
-      if (time > cursor && BlacklistConstants.defaultBlacklist.contains(pkg)) {
+      if (time > cursor && tracked.contains(pkg)) {
         usage[pkg!] =
             (usage[pkg] ?? Duration.zero) +
             Duration(milliseconds: time - cursor);
@@ -466,9 +491,7 @@ class ScreenTimeTracker extends ChangeNotifier {
         now.day,
       ).subtract(const Duration(days: 1)),
     );
-    return BlacklistConstants.defaultBlacklist.contains(package)
-        ? package
-        : null;
+    return isTrackedPackage(package) ? package : null;
   }
 
   Future<String?> foregroundSinceLeft() async {

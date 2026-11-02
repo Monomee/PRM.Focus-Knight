@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -27,7 +28,10 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({
-      'fk_daily_limit_minutes': 1,
+      'fk_app_limit_com.facebook.katana': 1,
+      'fk_app_limit_com.google.android.youtube': 1,
+      'fk_app_limit_com.instagram.android': 1,
+      'fk_app_limit_com.example.reader': 1,
       'fk_strict_mode': true,
     });
     active = false;
@@ -92,6 +96,22 @@ void main() {
     expect(active, isTrue);
     expect(shared.last, containsPair('app', 'Facebook'));
     expect(alerts.any((title) => title.contains('Facebook')), isTrue);
+  });
+
+  test('background worker blocks a custom selected app and unblocks when deselected', () async {
+    currentPackage = 'com.example.reader';
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      'fk_tracked_apps',
+      jsonEncode({currentPackage: 'Reader'}),
+    );
+    await task.onStart(DateTime.now(), TaskStarter.system);
+    await tick();
+    expect(active, isTrue);
+    expect(shared.last, containsPair('app', 'Reader'));
+    await prefs.setString('fk_tracked_apps', '{}');
+    await tick();
+    expect(active, isFalse);
   });
 
   test('worker reloads settings written by the UI and closes when strict is disabled', () async {

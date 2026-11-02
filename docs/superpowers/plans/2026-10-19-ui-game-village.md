@@ -52,7 +52,7 @@
   - `const List<CharacterSprites> enemySprites` (torch, tnt, barrel), `const SpriteSheet deadSprite = SpriteSheet('ui/characters/Dead.png', 7)`
   - `SpriteAnim({required SpriteSheet sheet, required double size, bool flipX = false, bool playing = true, int fps = 10, bool loop = true, VoidCallback? onComplete})`
   - `PixelIcon(String name, {double size = 24})` → `Image.asset('ui/icons/$name.png')`
-  - `const String kPixelFont = 'PixelifySans'`
+  - `const String kPixelFont = 'SVN-CodersCrux'`
 
 Số frame (= width/height của sheet), dùng nguyên trong `sprites.dart`:
 

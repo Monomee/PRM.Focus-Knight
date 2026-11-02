@@ -8,32 +8,57 @@ import 'package:test_dart/features/battle/battle_screen.dart';
 import 'package:test_dart/features/dashboard/services/focus_history_service.dart';
 import 'package:test_dart/features/focus_session/focus_session_controller.dart';
 
+// Persistence is covered by focus_village_lifecycle_test; keep animation tests on the fake clock.
+class _UiPlayer extends PlayerState {
+  @override
+  Future<String> beginConstruction({
+    required String task,
+    required int focusMinutes,
+  }) async => 'ui-plot';
+
+  @override
+  Future<void> finishConstruction(String id, {required bool won}) async {}
+}
+
 void main() {
   late PlayerState player;
   late FocusSessionController controller;
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
-    player = PlayerState();
-    controller = FocusSessionController(player: player, history: FocusHistoryService());
+    player = _UiPlayer();
+    final history = FocusHistoryService();
+    controller = FocusSessionController(player: player, history: history);
   });
+
+  tearDown(() => controller.dispose());
 
   Future<void> pumpBattle(WidgetTester tester) async {
     tester.view.physicalSize = const Size(400, 860);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(MaterialApp(home: BattleScreen(controller: controller, player: player)));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BattleScreen(controller: controller, player: player),
+      ),
+    );
     await tester.pump();
   }
 
   Future<void> finish(WidgetTester tester) async {
     controller.cancelSession();
+    await controller.retrySettlement();
     await tester.pumpWidget(const SizedBox());
     await tester.pump(const Duration(seconds: 5));
   }
 
-  testWidgets('focus view has no TabBar/AppBar and shows timer', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+  testWidgets('focus view has no TabBar/AppBar and shows timer', (
+    tester,
+  ) async {
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+    );
     await pumpBattle(tester);
     expect(find.byType(TabBar), findsNothing);
     expect(find.byType(AppBar), findsNothing);
@@ -42,7 +67,10 @@ void main() {
   });
 
   testWidgets('give up requires 2s long press', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+    );
     await pumpBattle(tester);
     final giveUp = find.byKey(const Key('give-up'));
 
@@ -53,7 +81,9 @@ void main() {
     expect(controller.isFocusing, isTrue);
 
     final g2 = await tester.startGesture(tester.getCenter(giveUp));
-    await tester.pump(const Duration(milliseconds: 600)); // long-press recognized
+    await tester.pump(
+      const Duration(milliseconds: 600),
+    ); // long-press recognized
     await tester.pump(const Duration(milliseconds: 2100));
     await g2.up();
     await tester.pump();
@@ -63,7 +93,11 @@ void main() {
   });
 
   testWidgets('camp shows session reward and skip button', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500, totalSessions: 2);
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     await pumpBattle(tester);
     controller.debugCompleteFocus();
     await tester.pump(const Duration(seconds: 1));
@@ -77,7 +111,10 @@ void main() {
   });
 
   testWidgets('defeat shows result screen', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+    );
     await pumpBattle(tester);
     for (var i = 0; i < 4; i++) {
       controller.applyBlacklistPenalty();
@@ -88,9 +125,15 @@ void main() {
   });
 
   testWidgets('HP bars are actually filled', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+    );
     await pumpBattle(tester);
-    final fills = find.descendant(of: find.byType(FractionallySizedBox), matching: find.byType(ColoredBox));
+    final fills = find.descendant(
+      of: find.byType(FractionallySizedBox),
+      matching: find.byType(ColoredBox),
+    );
     expect(fills, findsWidgets);
     for (final e in fills.evaluate()) {
       expect(tester.getSize(find.byWidget(e.widget)).height, greaterThan(0));
@@ -98,8 +141,14 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('mindful dialog closes when the session leaves focus', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500, totalSessions: 2);
+  testWidgets('mindful dialog closes when the session leaves focus', (
+    tester,
+  ) async {
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     await pumpBattle(tester);
     await tester.binding.handlePopRoute(); // system back while focusing
     await tester.pump();
@@ -114,8 +163,13 @@ void main() {
     await finish(tester);
   });
 
-  testWidgets('hero stays put and only fights once the enemy arrives', (tester) async {
-    controller.startFocusSession(task: 'Học', durationSeconds: 1500);
+  testWidgets('hero stays put and only fights once the enemy arrives', (
+    tester,
+  ) async {
+    await controller.startFocusSession(
+      task: 'Học',
+      durationSeconds: 1500,
+    );
     await pumpBattle(tester);
     final heroFinder = find.byKey(const Key('hero'));
     final heroPos = tester.getTopLeft(heroFinder);

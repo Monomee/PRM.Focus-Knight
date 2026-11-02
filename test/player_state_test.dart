@@ -4,7 +4,10 @@ import 'package:test_dart/core/game/player_state.dart';
 import 'package:test_dart/core/game/progression.dart';
 import 'package:test_dart/core/game/village.dart';
 
-Future<PlayerState> _loaded(Map<String, Object> prefs, {DateTime Function()? clock}) async {
+Future<PlayerState> _loaded(
+  Map<String, Object> prefs, {
+  DateTime Function()? clock,
+}) async {
   SharedPreferences.setMockInitialValues(prefs);
   final p = PlayerState(clock: clock);
   await p.load();
@@ -50,28 +53,31 @@ void main() {
     expect(p.levelOf(Building.tower), 0);
   });
 
-  test('build fails for locked character house', () async {
+  test('Castle coin upgrade requires Diamond rank', () async {
     final p = await _loaded({'fk_gold': 9999, 'fk_logs': 9999});
-    expect(await p.build(Building.archery, Rank.gold), isFalse);
+    expect(await p.build(Building.barracks, Rank.gold), isFalse);
     expect(p.coins, 9999);
-    expect(await p.build(Building.archery, Rank.diamond), isTrue);
+    expect(await p.build(Building.barracks, Rank.diamond), isTrue);
   });
 
   test('build fails at max level', () async {
     final p = await _loaded({'fk_gold': 9999, 'fk_logs': 9999});
-    expect(await p.build(Building.granary, Rank.starter), isTrue);
+    expect(await p.build(Building.granary, Rank.gold), isTrue);
     final coins = p.coins;
-    expect(await p.build(Building.granary, Rank.starter), isFalse);
+    expect(await p.build(Building.granary, Rank.gold), isFalse);
     expect(p.coins, coins);
   });
 
   test('ticket only after granary, once per week', () async {
     var now = DateTime(2026, 10, 21); // Wednesday
-    final p = await _loaded({'fk_gold': 9999, 'fk_logs': 9999}, clock: () => now);
+    final p = await _loaded({
+      'fk_gold': 9999,
+      'fk_logs': 9999,
+    }, clock: () => now);
     await p.grantWeeklyTicket(now);
     expect(p.streakTickets, 0);
 
-    await p.build(Building.granary, Rank.starter);
+    await p.build(Building.granary, Rank.gold);
     expect(p.streakTickets, 1);
     expect(p.granaryBuiltAt, DateTime(2026, 10, 21));
 
@@ -104,6 +110,9 @@ void main() {
     final reloaded = PlayerState();
     await reloaded.load();
     expect(reloaded.selectedCharacter, GameCharacter.lancer);
-    expect((reloaded.badgeCharacter, reloaded.badgeRank), (GameCharacter.lancer, Rank.gold));
+    expect(
+      (reloaded.badgeCharacter, reloaded.badgeRank),
+      (GameCharacter.lancer, Rank.gold),
+    );
   });
 }

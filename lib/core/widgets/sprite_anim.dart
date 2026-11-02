@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../game/sprites.dart';
 
-const String kPixelFont = 'PixelifySans';
+const String kPixelFont = 'SVN-CodersCrux';
 
 /// Plays a sprite strip with plain widgets (no Canvas): the full strip is laid out
 /// inside a clipped square and shifted frame by frame via [Alignment].

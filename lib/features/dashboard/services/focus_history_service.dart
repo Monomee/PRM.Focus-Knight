@@ -86,6 +86,7 @@ class FocusHistoryService extends ChangeNotifier {
   Future<void> recordCompletedSession(
     int durationSeconds, {
     String? settlementId,
+    String? analyticsSessionId,
     List<FocusInterval>? intervals,
   }) async {
     if (durationSeconds < 0 || (intervals != null && intervals.isEmpty)) {
@@ -120,6 +121,10 @@ class FocusHistoryService extends ChangeNotifier {
           }
         : jsonDecode(raw) as Map<String, dynamic>;
     final applied = (state['applied'] as List).cast<String>();
+    final analyticsIds = (state['analyticsIds'] as List? ?? []).cast<String>();
+    final analyticsCredits = Map<String, dynamic>.from(
+      state['analyticsCredits'] as Map? ?? {},
+    );
     if (settlementId != null && applied.contains(settlementId)) {
       await loadData();
       return;
@@ -192,11 +197,23 @@ class FocusHistoryService extends ChangeNotifier {
     final total = (state['total'] as int) + durationSeconds;
     counts[completedDay] = sessionCount;
     if (settlementId != null) applied.add(settlementId);
+    if (analyticsSessionId != null &&
+        !analyticsIds.contains(analyticsSessionId)) {
+      analyticsIds.add(analyticsSessionId);
+    }
+    if (analyticsSessionId != null) {
+      analyticsCredits[analyticsSessionId] = {
+        'days': dayAdds,
+        'completedDay': completedDay,
+      };
+    }
     try {
       if (!await prefs.setString(
         _keySettlementState,
         jsonEncode({
           'applied': applied,
+          'analyticsIds': analyticsIds,
+          'analyticsCredits': analyticsCredits,
           'total': total,
           'days': days,
           'hours': hours,

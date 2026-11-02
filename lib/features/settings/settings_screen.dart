@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../core/constants/blacklist_constants.dart';
 import '../../core/services/overlay_service.dart';
 import '../../core/widgets/flat_theme.dart';
 import '../battle/battle_launcher.dart';
 import '../telemetry/screen_time_tracker.dart';
+import 'app_selection_screen.dart';
 
 /// Permissions, screen-time limits and battle preferences.
 class SettingsScreen extends StatefulWidget {
@@ -23,20 +23,12 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final TextEditingController _limitTextController = TextEditingController(
-    text: '${widget.screenTimeTracker.dailyLimitMinutes}',
-  );
-  late final FocusNode _limitFocusNode = FocusNode();
-  late int _syncedDailyLimit;
-  bool _limitIsDirty = false;
   int _longRestMinutes = 15;
   bool _savingStrictMode = false;
 
   @override
   void initState() {
     super.initState();
-    _syncedDailyLimit = widget.screenTimeTracker.dailyLimitMinutes;
-    _limitTextController.addListener(_onLimitTextChanged);
     widget.screenTimeTracker.addListener(_onTrackerChanged);
     widget.overlayService.addListener(_onTrackerChanged);
     widget.screenTimeTracker.refreshUsageStats();
@@ -47,21 +39,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  void _onLimitTextChanged() {
-    _limitIsDirty = _limitTextController.text.trim() != '$_syncedDailyLimit';
-  }
-
   void _onTrackerChanged() {
-    final dailyLimit = widget.screenTimeTracker.dailyLimitMinutes;
-    if (dailyLimit != _syncedDailyLimit) {
-      final wasDirty = _limitIsDirty;
-      _syncedDailyLimit = dailyLimit;
-      if (!wasDirty && !_limitFocusNode.hasFocus) {
-        _limitTextController.text = '$dailyLimit';
-      } else {
-        _limitIsDirty = _limitTextController.text.trim() != '$dailyLimit';
-      }
-    }
     if (mounted) setState(() {});
   }
 
@@ -69,9 +47,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void dispose() {
     widget.screenTimeTracker.removeListener(_onTrackerChanged);
     widget.overlayService.removeListener(_onTrackerChanged);
-    _limitTextController.removeListener(_onLimitTextChanged);
-    _limitFocusNode.dispose();
-    _limitTextController.dispose();
     super.dispose();
   }
 
@@ -80,31 +55,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() => _longRestMinutes = m);
     final p = await SharedPreferences.getInstance();
     await p.setInt(kLongRestMinutesKey, m);
-  }
-
-  void _saveDailyLimit() {
-    final minutes = int.tryParse(_limitTextController.text.trim());
-    if (minutes != null && minutes > 0) {
-      _syncedDailyLimit = minutes;
-      _limitIsDirty = false;
-      widget.screenTimeTracker.setDailyLimitMinutes(minutes);
-      FocusScope.of(context).unfocus();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Đã lưu hạn mức MXH: $minutes phút/ngày'),
-          duration: const Duration(seconds: 2),
-          backgroundColor: const Color(0xFF1E2333),
-        ),
-      );
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vui lòng nhập số phút hợp lệ (> 0)'),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFF7F1D1D),
-        ),
-      );
-    }
   }
 
   Future<void> _setStrictMode(bool enabled) async {
@@ -291,13 +241,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final tracker = widget.screenTimeTracker;
     final hasPerm = tracker.hasPermission;
     final totalDistraction = tracker.totalDistractionToday;
-    final isExceeded = tracker.isLimitExceeded;
-    final progress = tracker.limitProgress;
-
-    final Color progressColor = isExceeded
-        ? const Color(0xFFEF4444)
-        : (progress >= 0.8 ? const Color(0xFFF59E0B) : const Color(0xFF10B981));
-
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -339,6 +282,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 10),
 
+          OutlinedButton.icon(
+            icon: const Icon(Icons.apps),
+            label: Text('Chọn ứng dụng (${tracker.trackedApps.length})'),
+            onPressed: () async {
+              await tracker.ready;
+              if (!mounted) return;
+              await Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => AppSelectionScreen(tracker: tracker),
+                ),
+              );
+            },
+          ),
+          if (tracker.trackedApps.isEmpty)
+            const Text('Chưa chọn ứng dụng nào để theo dõi và chặn.'),
+          const SizedBox(height: 10),
+
           if (!hasPerm) ...[
             Container(
               padding: const EdgeInsets.all(10),
@@ -357,7 +317,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(width: 8),
                   const Expanded(
                     child: Text(
-                      'Cần cấp quyền Truy cập Sử dụng để theo dõi MXH.',
+                      'Cần cấp quyền Truy cập Sử dụng để theo dõi ứng dụng.',
                       style: TextStyle(fontSize: 11, color: Color(0xFFFCD34D)),
                     ),
                   ),
@@ -384,240 +344,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ] else ...[
-            // Daily Limit Section Header & Status Badge
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Row(
-                  children: [
-                    Icon(
-                      Icons.hourglass_top,
-                      size: 14,
-                      color: Color(0xFFFFB300),
-                    ),
-                    SizedBox(width: 5),
-                    Text(
-                      'HẠN MỨC MXH TRONG NGÀY',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.5,
-                        color: Color(0xFFE2E8F0),
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isExceeded
-                        ? const Color(0xFFEF4444).withValues(alpha: 0.2)
-                        : (progress >= 0.8
-                              ? const Color(0xFFF59E0B).withValues(alpha: 0.2)
-                              : const Color(0xFF10B981).withValues(alpha: 0.2)),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isExceeded
-                          ? const Color(0xFFEF4444)
-                          : (progress >= 0.8
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF10B981)),
-                    ),
-                  ),
-                  child: Text(
-                    isExceeded
-                        ? '⚠️ ĐÃ QUÁ HẠN'
-                        : 'Còn: ${tracker.formatDuration(tracker.remainingTime)}',
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: isExceeded
-                          ? const Color(0xFFEF4444)
-                          : (progress >= 0.8
-                                ? const Color(0xFFF59E0B)
-                                : const Color(0xFF10B981)),
-                    ),
-                  ),
-                ),
-              ],
+            Text(
+              'Đã dùng hôm nay: ${tracker.formatDuration(totalDistraction)}',
+              style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
             ),
-
-            const SizedBox(height: 8),
-
-            // Plain Text Input Field for Daily Limit
-            TextField(
-              controller: _limitTextController,
-              focusNode: _limitFocusNode,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _saveDailyLimit(),
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Nhập số phút (ví dụ: 45, 60)',
-                hintStyle: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 12,
-                ),
-                filled: true,
-                fillColor: const Color(0xFF121622),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
-                prefixIcon: const Icon(
-                  Icons.timer_outlined,
-                  size: 18,
-                  color: Color(0xFFFFB300),
-                ),
-                suffixIcon: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'phút',
-                      style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                    ),
-                    const SizedBox(width: 8),
-                    Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ElevatedButton(
-                        onPressed: _saveDailyLimit,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFFD97706),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          minimumSize: Size.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                        ),
-                        child: const Text(
-                          'Lưu',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF334155)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(
-                    color: Color(0xFFFFB300),
-                    width: 1.5,
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            // Quick preset chips
-            Row(
-              children: [
-                const Text(
-                  'Gợi ý:',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
-                ),
-                const SizedBox(width: 6),
-                ...[15, 30, 60, 120].map((mins) {
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: InkWell(
-                      onTap: () {
-                        _limitTextController.text = '$mins';
-                        tracker.setDailyLimitMinutes(mins);
-                      },
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: tracker.dailyLimitMinutes == mins
-                              ? const Color(0xFFFFB300).withValues(alpha: 0.2)
-                              : const Color(0xFF1E2333),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: tracker.dailyLimitMinutes == mins
-                                ? const Color(0xFFFFB300)
-                                : const Color(0xFF334155),
-                          ),
-                        ),
-                        child: Text(
-                          '${mins}m',
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: tracker.dailyLimitMinutes == mins
-                                ? const Color(0xFFFFB300)
-                                : const Color(0xFF94A3B8),
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-              ],
-            ),
-
-            const SizedBox(height: 10),
-
-            // Usage Progress Indicator
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                backgroundColor: const Color(0xFF0F172A),
-                valueColor: AlwaysStoppedAnimation<Color>(progressColor),
-                minHeight: 6,
-              ),
-            ),
-
-            const SizedBox(height: 6),
-
-            // Usage vs Limit Caption
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Đã dùng: ${tracker.formatDuration(totalDistraction)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: isExceeded
-                        ? const Color(0xFFEF4444)
-                        : const Color(0xFF94A3B8),
-                  ),
-                ),
-                Text(
-                  'Hạn mức: ${tracker.dailyLimitMinutes} phút',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFCBD5E1),
-                  ),
-                ),
-              ],
-            ),
-
             const Divider(color: Color(0xFF262C3D), height: 16),
 
             // Blacklisted apps breakdown with individual limits
@@ -644,8 +374,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 6),
 
-            ...BlacklistConstants.defaultBlacklist.map((pkg) {
-              final appName = BlacklistConstants.appNames[pkg] ?? pkg;
+            ...tracker.trackedApps.keys.map((pkg) {
+              final appName = tracker.appNameFor(pkg);
               final dur = tracker.appDistractions[pkg] ?? Duration.zero;
               final limit = tracker.getAppLimit(pkg);
               final isAppExceeded = tracker.isAppLimitExceeded(pkg);
@@ -655,28 +385,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '• $appName',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Color(0xFFCBD5E1),
-                          ),
-                        ),
-                        if (isAppExceeded) ...[
-                          const SizedBox(width: 4),
-                          const Text(
-                            '⚠️ Quá hạn',
-                            style: TextStyle(
-                              fontSize: 9,
-                              color: Color(0xFFEF4444),
-                              fontWeight: FontWeight.bold,
+                    Expanded(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '• $appName',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFFCBD5E1),
+                              ),
                             ),
                           ),
+                          if (isAppExceeded) ...[
+                            const SizedBox(width: 4),
+                            const Text(
+                              '⚠️ Quá hạn',
+                              style: TextStyle(
+                                fontSize: 9,
+                                color: Color(0xFFEF4444),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
                     Row(
                       mainAxisSize: MainAxisSize.min,

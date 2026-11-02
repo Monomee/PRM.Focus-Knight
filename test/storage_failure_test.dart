@@ -10,6 +10,7 @@ import 'package:test_dart/features/dashboard/services/focus_history_service.dart
 import 'package:test_dart/features/focus_session/focus_session_controller.dart';
 import 'package:test_dart/features/focus_session/settlement.dart';
 import 'package:test_dart/features/telemetry/screen_time_tracker.dart';
+import 'package:test_dart/features/dashboard/services/analytics_journal.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +62,102 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
 
+  test(
+    'analytics storage failure is visible and retry preserves legacy data',
+    () async {
+      await AnalyticsJournal.instance.flushed;
+      final start = DateTime(2026, 11, 2, 9), end = DateTime(2026, 11, 2, 9, 1);
+      final record = <String, dynamic>{
+        'id': 'storage-retry',
+        'start': start.toIso8601String(),
+        'end': end.toIso8601String(),
+        'target': 60,
+        'outcome': 'completed',
+        'monitored': false,
+        'intervals': [
+          {'start': start.toIso8601String(), 'end': end.toIso8601String()},
+        ],
+        'interruptions': [],
+        'pauses': [],
+      };
+      disk['flutter.fk_total_focus_seconds_all_time'] = 3600;
+      failKey = 'flutter.${AnalyticsJournal.prefix}storage-retry';
+      AnalyticsJournal.instance.save(record);
+      await AnalyticsJournal.instance.flushed;
+      expect(AnalyticsJournal.instance.error, isNotNull);
+      await AnalyticsJournal.instance.retryFailed();
+      expect(AnalyticsJournal.instance.error, isNull);
+      expect(
+        SessionSample.parse(
+          disk['flutter.${AnalyticsJournal.prefix}storage-retry'] as String,
+        )!.seconds,
+        60,
+      );
+      expect(disk['flutter.fk_total_focus_seconds_all_time'], 3600);
+    },
+  );
+
+  test(
+    'decoration refund retries once and preserves applied rewards',
+    () async {
+      disk['flutter.fk_wallet_state'] = jsonEncode({
+        'coins': 10,
+        'logs': 5,
+        'buildings': ['archery:1'],
+        'applied': ['old-win'],
+      });
+      final player = PlayerState();
+      failKey = 'flutter.fk_wallet_state';
+      await expectLater(player.load(), throwsStateError);
+      await player.load();
+      final refunded = (player.coins, player.logs);
+      await player.deposit(coins: 99, logs: 99, settlementId: 'old-win');
+      expect((player.coins, player.logs), refunded);
+      await player.load();
+      expect((player.coins, player.logs), refunded);
+    },
+  );
+
+  test('failed plot reservation never starts a battle', () async {
+    final player = PlayerState();
+    await player.load();
+    final controller = FocusSessionController(player: player);
+    addTearDown(controller.dispose);
+    failKey = 'flutter.fk_wallet_state';
+    await expectLater(
+      controller.startFocusSession(task: 'T', durationSeconds: 60),
+      throwsStateError,
+    );
+    expect(controller.inBattle, isFalse);
+    expect(controller.isStarting, isFalse);
+    expect(player.plots, isEmpty);
+    expect(
+      await controller.startFocusSession(task: 'T', durationSeconds: 60),
+      isTrue,
+    );
+    controller.cancelSession();
+    await controller.retrySettlement();
+  });
+
+  test('failed ruin save blocks new battles until retry', () async {
+    final player = PlayerState();
+    await player.load();
+    final controller = FocusSessionController(player: player);
+    addTearDown(controller.dispose);
+    await controller.startFocusSession(task: 'T', durationSeconds: 60);
+    failKey = 'flutter.fk_wallet_state';
+    controller.forceAbandonSession();
+    await controller.retrySettlement();
+    expect(controller.settlementFailed, isTrue);
+    expect(
+      await controller.startFocusSession(task: 'T2', durationSeconds: 60),
+      isFalse,
+    );
+    await controller.retrySettlement();
+    expect(player.plots.single.state, PlotState.ruined);
+    expect(controller.hasPendingSettlement, isFalse);
+  });
+
   test('strict mode save failure does not enable it or reload a failed cache value', () async {
     final tracker = ScreenTimeTracker();
     addTearDown(tracker.dispose);
@@ -77,6 +174,26 @@ void main() {
   });
 
   test(
+    'failed app selection write preserves previous selection on reload',
+    () async {
+      final tracker = ScreenTimeTracker();
+      addTearDown(tracker.dispose);
+      await tracker.ready;
+      failKey = 'flutter.fk_tracked_apps';
+      await expectLater(
+        tracker.setTrackedApps({'com.example.reader': 'Reader'}),
+        throwsStateError,
+      );
+      expect(tracker.trackedApps.containsKey('com.facebook.katana'), isTrue);
+      final restored = ScreenTimeTracker();
+      addTearDown(restored.dispose);
+      await restored.ready;
+      expect(restored.trackedApps.containsKey('com.facebook.katana'), isTrue);
+      expect(restored.trackedApps.containsKey('com.example.reader'), isFalse);
+    },
+  );
+
+  test(
     'timestamped settlement retry after midnight preserves original allocation',
     () async {
       var now = DateTime(2026, 10, 30, 23, 59, 50);
@@ -91,7 +208,7 @@ void main() {
       );
       addTearDown(controller.dispose);
       failJournalWrite = 2; // History saved, journal progress not yet saved.
-      controller.startFocusSession(task: 'Retry', durationSeconds: 20);
+      await controller.startFocusSession(task: 'Retry', durationSeconds: 20);
       now = now.add(const Duration(seconds: 20));
       controller.refreshTimer();
       await pumpEventQueue();
@@ -165,10 +282,13 @@ void main() {
       );
       addTearDown(controller.dispose);
       failKey = 'flutter.${Settlement.key}';
-      controller.startFocusSession(task: 'Won battle', durationSeconds: 1500);
+      await controller.startFocusSession(
+        task: 'Won battle',
+        durationSeconds: 1500,
+      );
       controller.debugCompleteFocus();
       await pumpEventQueue();
-      controller.startFocusSession(
+      await controller.startFocusSession(
         task: 'Another battle',
         durationSeconds: 900,
       );
@@ -197,7 +317,7 @@ void main() {
       );
       addTearDown(controller.dispose);
       failJournalWrite = 3;
-      controller.startFocusSession(task: 'T', durationSeconds: 1500);
+      await controller.startFocusSession(task: 'T', durationSeconds: 1500);
       controller.debugCompleteFocus();
       await pumpEventQueue();
       expect(controller.settlementFailed, isTrue);

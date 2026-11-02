@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 
 /// Flat "neo-retro minimal" palette for everything outside the battle.
 class Flat {
+  static const analyticsCyan = Color(0xFF67E8F9);
+  static const analyticsPurple = Color(0xFFC4B5FD);
+  static const activityHeat = [border, Color(0xFF174735), Color(0xFF237F50), Color(0xFF32C66D)];
+  static const goldenHeat = [Color(0xFF173744), Color(0xFF26655C), Color(0xFF58AD82), Color(0xFFF2C75C)];
   static const bg = Color(0xFF0F131C);
   static const card = Color(0xFF151A26);
   static const border = Color(0xFF232A3B);

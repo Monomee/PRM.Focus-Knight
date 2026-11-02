@@ -12,7 +12,9 @@ void main() {
   late FocusSessionController c;
 
   setUp(() async {
-    SharedPreferences.setMockInitialValues({'fk_total_focus_seconds_all_time': 10 * 3600 - 600});
+    SharedPreferences.setMockInitialValues({
+      'fk_total_focus_seconds_all_time': 10 * 3600 - 600,
+    });
     alerts = [];
     AlertNotifier.sink = (title, body) async => alerts.add(title);
     final player = PlayerState();
@@ -22,13 +24,19 @@ void main() {
     c = FocusSessionController(player: player, history: history);
   });
 
-  tearDown(() {
+  tearDown(() async {
     c.cancelSession();
+    await c.retrySettlement();
+    c.dispose();
     AlertNotifier.sink = null;
   });
 
   test('alerts only on session start/end and rank up', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     expect(alerts, ['⚔ Bắt đầu phiên 1/2']);
 
     c.debugCompleteFocus();
@@ -43,13 +51,13 @@ void main() {
   });
 
   test('the per-second countdown never alerts', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 5);
+    await c.startFocusSession(task: 'T', durationSeconds: 5);
     await Future.delayed(const Duration(milliseconds: 2500));
     expect(alerts, ['⚔ Bắt đầu phiên 1/1']);
   });
 
-  test('defeat ends the session with an alert', () {
-    c.startFocusSession(task: 'T', durationSeconds: 1500);
+  test('defeat ends the session with an alert', () async {
+    await c.startFocusSession(task: 'T', durationSeconds: 1500);
     for (var i = 0; i < 4; i++) {
       c.applyBlacklistPenalty();
     }

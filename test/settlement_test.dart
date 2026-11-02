@@ -11,6 +11,7 @@ class FailingHistory extends FocusHistoryService {
   Future<void> recordCompletedSession(
     int durationSeconds, {
     String? settlementId,
+    String? analyticsSessionId,
     List<FocusInterval>? intervals,
   }) async {
     throw StateError('write failed');

@@ -1,4 +1,4 @@
-/// Predefined blacklisted entertainment & social media packages for screen-time telemetry
+/// Default selection for existing installations; runtime choices live in preferences.
 class BlacklistConstants {
   static const Map<String, String> appNames = {
     'com.facebook.katana': 'Facebook',

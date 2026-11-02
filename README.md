@@ -16,9 +16,9 @@ Coin và Log dùng để xây làng; tổng thời gian tập trung được cô
 | Phần thưởng | Tích lũy Coin, Log và giờ tập trung vào quỹ trận; nhận khi hoàn thành toàn bộ trận. Thua hoặc bỏ cuộc mất phần đang tạm giữ. |
 | Làng | Xây và nâng cấp 8 công trình. Tháp canh tăng thời gian ân hạn, Kho lương cấp vé giữ chuỗi, Doanh trại tăng Coin; các công trình còn lại dùng trang trí. |
 | Bộ sưu tập | Chọn nhân vật đã mở để ra trận; chọn huy hiệu làm avatar. |
-| Chống xao nhãng | Theo dõi Facebook, TikTok, Instagram và YouTube; cảnh báo hạn mức; overlay nhắc quay lại tập trung và hình phạt khi dùng app bị chặn trong phiên focus. |
+| Chống xao nhãng | Tự chọn ứng dụng cần theo dõi/chặn; cảnh báo hạn mức; Strict mode và overlay/hình phạt khi mở app đã chọn trong phiên focus. |
 | Thống kê | Phút tập trung, số phiên, số lần xao nhãng trong ngày; biểu đồ 7 ngày, chuỗi ngày liên tiếp, lịch tháng và các màn phân tích. |
-| Cài đặt | Quản lý quyền truy cập sử dụng, quyền overlay, hạn mức MXH chung và từng app, thời lượng nghỉ dài. |
+| Cài đặt | Chọn ứng dụng, quản lý quyền truy cập sử dụng/overlay, hạn mức riêng từng app, thời lượng nghỉ dài. |
 
 ### Hạng và nhân vật
 
@@ -43,15 +43,18 @@ Mở tab **Cài đặt**:
 - Chọn **Cấp quyền** để cho phép truy cập dữ liệu sử dụng ứng dụng.
 - Chọn **Cấp quyền Overlay** để cho phép hiển thị lời nhắc trên ứng dụng khác.
 - Cho phép thông báo khi ứng dụng yêu cầu để nhận thông báo phiên và cảnh báo.
-- Đặt hạn mức MXH theo ngày hoặc chỉnh riêng cho từng ứng dụng; chỉnh thời lượng nghỉ dài nếu cần.
+- Bấm **Chọn ứng dụng**, tìm theo tên, đánh dấu các app muốn quản lý rồi **Lưu**. Danh sách này dùng chung cho tracking, Strict mode và chặn trong trận Pomodoro.
+- Chỉnh hạn mức riêng bằng nút bút cạnh từng ứng dụng. App chưa có hạn mức riêng dùng 30 phút/ngày; chỉnh thời lượng nghỉ dài nếu cần.
 
 Quyền truy cập sử dụng phục vụ theo dõi thời gian và phát hiện app gây xao nhãng. Quyền overlay phục vụ màn hình nhắc quay lại trận.
 
+Người dùng cũ giữ mặc định Facebook, TikTok, Instagram và YouTube cho đến khi tự thay đổi. Có thể bỏ chọn hết để không theo dõi/chặn app nào. Bỏ chọn không xóa hạn mức riêng đã đặt; chọn lại app sẽ dùng lại hạn mức đó. Số liệu sử dụng được tổng hợp theo danh sách hiện được chọn. Màn chọn hiển thị ứng dụng có thể mở trên hồ sơ Android hiện tại; FocusKnight, màn hình chính và phần cài đặt hệ thống được loại khỏi danh sách để luôn có thể thoát/cấp lại quyền.
+
 ### Strict mode cho hạn mức hằng ngày
 
-Trong **Cài đặt**, bật **Strict mode** để che toàn màn hình ứng dụng mạng xã hội đã hết hạn mức, đồng thời vẫn gửi thông báo. Overlay hiển thị tên ứng dụng, hạn mức và nút **Quay lại FocusKnight**. Tắt Strict mode thì chỉ gửi thông báo; lựa chọn được lưu cho lần mở sau. Mặc định chế độ này tắt.
+Trong **Cài đặt**, bật **Strict mode** để che toàn màn hình ứng dụng đã chọn khi hết hạn mức, đồng thời vẫn gửi thông báo. Overlay hiển thị tên ứng dụng, hạn mức và nút **Quay lại FocusKnight**. Tắt Strict mode thì chỉ gửi thông báo; lựa chọn được lưu cho lần mở sau. Mặc định chế độ này tắt.
 
-Cần cấp quyền **Truy cập Sử dụng**, **Overlay** và cho phép thông báo trong Android. Nếu chưa cấp quyền overlay, ứng dụng yêu cầu cấp quyền trước khi bật; nếu quyền bị thu hồi, Cài đặt hiển thị cảnh báo. Overlay tự đóng khi rời app quá hạn, khóa màn hình, quay lại FocusKnight hoặc hạn mức không còn bị vượt. Hạn mức riêng từng ứng dụng được ưu tiên; ứng dụng chưa đặt riêng dùng giá trị mặc định chung.
+Cần cấp quyền **Truy cập Sử dụng**, **Overlay** và cho phép thông báo trong Android. Nếu chưa cấp quyền overlay, ứng dụng yêu cầu cấp quyền trước khi bật; nếu quyền bị thu hồi, Cài đặt hiển thị cảnh báo. Overlay tự đóng khi rời app quá hạn, khóa màn hình, quay lại FocusKnight hoặc hạn mức không còn bị vượt. Mỗi app dùng hạn mức riêng đã lưu, hoặc 30 phút/ngày nếu chưa chỉnh; hạn mức chung cũ không còn được sử dụng.
 
 Strict mode chỉ áp dụng ngoài trận Pomodoro; overlay, ân hạn và hình phạt trong trận giữ nguyên. Khi đã cấp quyền sử dụng, service nền có thông báo thường trực sẽ kiểm tra khoảng mỗi 2 giây, kể cả khi đóng giao diện hoặc vuốt FocusKnight khỏi ứng dụng gần đây. Service dùng worker riêng, được cấu hình tự khôi phục khi Android khởi động lại service, sau khởi động máy và sau cập nhật ứng dụng; không cần mở lại giao diện để xử lý hạn mức. Cài đặt được nạp lại giữa các worker nên thay đổi hạn mức và công tắc vẫn có hiệu lực.
 
@@ -79,7 +82,11 @@ Trong phiên tập trung, mở ứng dụng thuộc danh sách chặn quá thờ
 
 ### 4. Nhận thưởng và phát triển làng
 
-Hoàn thành tất cả phiên để nhận Coin, Log và giờ tập trung của trận. Vào tab **Làng**, chạm một ô công trình để xem tác dụng, chi phí và xây/nâng cấp. Quỹ của trận đang chơi chưa thể dùng để xây làng.
+Hoàn thành tất cả phiên để nhận Coin, Log, giờ tập trung và một công trình. Loại công trình tính theo tổng phút focus, không gồm giờ nghỉ: 1–30 House1, 31–60 Archery, 61–100 Tower, 101–150 Monastery, trên 150 Barracks. Màn thiết lập hiển thị trước công trình sẽ xây.
+
+Castle luôn nằm ở giữa phía trên làng. Chạm Castle để nâng cấp ân hạn (Starter), vé giữ chuỗi (Gold) và tăng Coin (Diamond); giữ giá, hiệu ứng và số cấp cũ. Công trình focus nằm trong lưới 3×3 bên dưới; chuyển mảnh đất chỉ đổi phần lưới. Thua, bỏ cuộc hoặc mở lại app sau một trận chưa hoàn tất sẽ để lại nhà đổ, chiếm ô vĩnh viễn và không sửa/xây đè.
+
+Khi cập nhật từ làng cũ, ba nâng cấp chức năng được giữ trong Castle. Coin/Log đã mua các cấp nhà trang trí được hoàn đúng một lần. Ví, hạng, nhân vật và lịch sử vẫn được giữ. Quỹ của trận đang chơi chưa thể dùng để nâng cấp Castle.
 
 Vào **Bộ sưu tập** để chọn nhân vật hoặc huy hiệu đã mở. Tại **Trang chủ**, chọn **Phân tích chi tiết** để xem lịch và biểu đồ.
 

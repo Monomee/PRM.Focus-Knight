@@ -1,258 +1,166 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/widgets/flat_theme.dart';
+import '../services/analytics_calculations.dart';
 import '../services/analytics_service.dart';
+import 'analytics_chart.dart';
 
-/// Card displaying Golden Hours (Khung giờ vàng) and productivity recommendations
 class GoldenHoursCard extends StatelessWidget {
-  final GoldenHoursData data;
-
   const GoldenHoursCard({super.key, required this.data});
-
+  final GoldenHoursData data;
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161A26),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF262C3D)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEAB308).withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.wb_sunny_rounded,
-                  size: 16,
-                  color: Color(0xFFFACC15),
-                ),
+    final best = data.best;
+    return AnalyticsCard(
+      title: 'Khung giờ vàng',
+      icon: Icons.wb_sunny_outlined,
+      color: Flat.accent,
+      info: '30 ngày gần nhất. Mỗi ô cần ít nhất 3 phiên để hiển thị hiệu suất. Điểm phiên = 50% hoàn thành + 50% tỷ lệ thời gian tập trung thực tế/mục tiêu phiên, tối đa 100%. Điểm ô là trung bình có trọng số theo số giây thuộc đúng khung giờ.\n\nMàu sáng hơn là hiệu suất cao hơn. Chạm ô để xem số phiên và thời gian.',
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: AnalyticsKpi(
+                value: best == null ? '—' : slotLabels[best ~/ 7],
+                label: 'Khung giờ hiệu quả nhất',
+                color: best == null ? Flat.muted : Flat.accent,
               ),
-              const SizedBox(width: 8),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'KHUNG GIỜ VÀNG (GOLDEN HOURS)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.6,
-                        color: Color(0xFFF1F5F9),
-                      ),
-                    ),
-                    Text(
-                      'Thống kê và gợi ý khoảng thời gian não bộ đạt đỉnh cao hiệu suất',
-                      style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-
-          // Highlight Trophy Box
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFF3B2508), Color(0xFF1E2333)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFFB300), width: 1.2),
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFB300).withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: const Color(0xFFFFB300),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: const Center(
-                    child: Text('👑', style: TextStyle(fontSize: 20)),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'KHUNG GIỜ ĐỈNH CAO CỦA BẠN',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.8,
-                          color: Color(0xFFFCD34D),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        data.peakTimeSlot.isEmpty
-                            ? 'CHƯA ĐỦ DỮ LIỆU'
-                            : data.peakTimeSlot,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w900,
-                          fontFamily: 'monospace',
-                          letterSpacing: 1.2,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Container(
+            if (best != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 6),
+                child: Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 4,
+                    vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                    color: Flat.accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFF10B981)),
                   ),
                   child: Text(
-                    data.peakTimeSlot.isEmpty
-                        ? 'CHƯA CÓ DỮ LIỆU'
-                        : '${(data.peakEfficiency * 100).toInt()}% TƯƠNG ĐỐI',
+                    '${(data.peakEfficiency * 100).round()}đ',
                     style: const TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF34D399),
+                      color: Flat.accent,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
-          // 6 Time Blocks Bar Chart
-          const Text(
-            'PHÂN BỔ HIỆU SUẤT TRONG TUẦN',
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
-              color: Color(0xFF94A3B8),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          ...data.blockProductivity.entries.map((entry) {
-            final isPeak = entry.value == data.peakEfficiency;
-            final percent = (entry.value * 100).toInt();
-
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3.5),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 72,
-                    child: Text(
-                      entry.key,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: isPeak
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isPeak
-                            ? const Color(0xFFFFB300)
-                            : const Color(0xFFCBD5E1),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: entry.value,
-                        backgroundColor: const Color(0xFF1E2333),
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          isPeak
-                              ? const Color(0xFFFFB300)
-                              : const Color(0xFF3B82F6),
-                        ),
-                        minHeight: 8,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 38,
-                    child: Text(
-                      '$percent%',
-                      textAlign: TextAlign.end,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontFamily: 'monospace',
-                        fontWeight: isPeak
-                            ? FontWeight.bold
-                            : FontWeight.normal,
-                        color: isPeak
-                            ? const Color(0xFFFFB300)
-                            : const Color(0xFF94A3B8),
-                      ),
-                    ),
-                  ),
-                ],
               ),
-            );
-          }),
-
-          const SizedBox(height: 12),
-
-          // Recommendation Tip Box
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E2333),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF334155)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.lightbulb_outline,
-                  size: 16,
-                  color: Color(0xFFFFB300),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    data.recommendation,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFCBD5E1),
-                      height: 1.35,
-                    ),
+          ],
+        ),
+        if (data.cells.any((cell) => cell.sessions.isNotEmpty))
+          LayoutBuilder(
+            builder: (context, box) {
+              final rowHeight = MediaQuery.textScalerOf(context)
+                  .scale(20)
+                  .clamp(34.0, 52.0)
+                  .toDouble();
+              final showNumber =
+                  (box.maxWidth - 46) / 7 >
+                  MediaQuery.textScalerOf(context).scale(18) + 4;
+              return Table(
+                key: const ValueKey('golden-grid'),
+                columnWidths: const {0: FixedColumnWidth(46)},
+                defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                children: [
+                  TableRow(
+                    children: [
+                      const SizedBox(height: 24),
+                      for (final w in weekdays)
+                        Center(
+                          child: Text(
+                            w,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Flat.muted,
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                ),
-              ],
+                  for (var slot = 0; slot < 7; slot++)
+                    TableRow(
+                      children: [
+                        Text(
+                          '${slotEdges[slot]}–${slotEdges[slot + 1]}h',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Flat.muted,
+                          ),
+                        ),
+                        for (var weekday = 0; weekday < 7; weekday++)
+                          _cell(context, slot, weekday, rowHeight, showNumber),
+                      ],
+                    ),
+                ],
+              );
+            },
+          ),
+        if (best == null)
+          const AnalyticsEmpty(
+            message: 'Thêm vài phiên để tìm khung giờ tốt nhất.',
+          )
+        else
+          Text(
+            'Hiệu quả nhất: ${weekdays[best % 7]}, ${slotLabels[best ~/ 7]}.',
+            style: const TextStyle(fontSize: 12, color: Flat.muted),
+          ),
+      ],
+    );
+  }
+
+  Widget _cell(
+    BuildContext context,
+    int slot,
+    int weekday,
+    double height,
+    bool showNumber,
+  ) {
+    final cell = data.cells[slot * 7 + weekday],
+        score = data.cells[slot * 7 + weekday].score;
+    final color = score == null
+        ? Flat.border
+        : Flat.goldenHeat[score < 0.5
+              ? 0
+              : score < 0.7
+              ? 1
+              : score < 0.85
+              ? 2
+              : 3];
+    final label =
+        '${weekdays[weekday]} ${slotLabels[slot]}\n${score == null ? 'Chưa đủ dữ liệu' : '${(score * 100).round()} điểm'} · ${cell.sessions.length} phiên\n${(cell.seconds / 60).round()} phút tập trung';
+    return Semantics(
+      label: label,
+      button: true,
+      child: Tooltip(
+        message: label,
+        child: InkWell(
+          onTap: () => showAnalyticsDetail(context, 'Khung giờ', label),
+          child: Container(
+            height: height,
+            margin: const EdgeInsets.all(2),
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              score == null
+                  ? '·'
+                  : showNumber
+                  ? '${(score * 100).round()}'
+                  : '•',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                color: score != null && score >= 0.7 ? Flat.bg : Flat.text,
+              ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

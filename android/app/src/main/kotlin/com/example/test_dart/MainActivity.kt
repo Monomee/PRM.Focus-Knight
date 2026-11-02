@@ -24,6 +24,27 @@ class MainActivity : FlutterActivity() {
 /** Available to both the Activity and the foreground worker engine. */
 object FocusKnightChannels {
     fun register(context: Context, flutterEngine: FlutterEngine) {
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "focusknight/apps")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "listApps") {
+                    result.notImplemented()
+                } else {
+                    try {
+                        val pm = context.packageManager
+                        val homeApps = pm.queryIntentActivities(
+                            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0
+                        ).map { it.activityInfo.packageName }.toSet()
+                        val excluded = homeApps + setOf(context.packageName, "com.android.settings", "com.android.systemui")
+                        val apps = pm.queryIntentActivities(
+                            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0
+                        ).filter { it.activityInfo.packageName !in excluded }
+                            .associate { it.activityInfo.packageName to it.activityInfo.applicationInfo.loadLabel(pm).toString() }
+                        result.success(apps)
+                    } catch (error: Exception) {
+                        result.error("APP_LIST_UNAVAILABLE", "Cannot load applications", null)
+                    }
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "focusknight/overlay")
             .setMethodCallHandler { call, result ->
                 if (call.method == "closeOverlay") {

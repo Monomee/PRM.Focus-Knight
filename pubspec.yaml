@@ -80,9 +80,9 @@ flutter:
     - ui/scenes/
 
   fonts:
-    - family: PixelifySans
+    - family: SVN-CodersCrux
       fonts:
-        - asset: ui/fonts/PixelifySans.ttf
+        - asset: ui/fonts/SVN-Coder's Crux.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

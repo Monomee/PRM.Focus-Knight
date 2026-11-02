@@ -20,10 +20,19 @@ void main() {
     c = FocusSessionController(player: player, history: history);
   });
 
-  tearDown(() => c.cancelSession());
+  tearDown(() async {
+    c.cancelSession();
+    await c.retrySettlement();
+    c.dispose();
+  });
 
   test('real timers still run a full battle', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 1, totalSessions: 2, restDurationSeconds: 1);
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1,
+      totalSessions: 2,
+      restDurationSeconds: 1,
+    );
     await Future.delayed(const Duration(milliseconds: 3500));
     expect(c.lastResult, isNotNull);
     expect(c.lastResult!.won, isTrue);
@@ -32,7 +41,7 @@ void main() {
   });
 
   test('completed battle deposits reward once', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 1500);
+    await c.startFocusSession(task: 'T', durationSeconds: 1500);
     c.debugCompleteFocus();
     await pumpEventQueue();
     expect(player.coins, 30);
@@ -43,7 +52,11 @@ void main() {
   });
 
   test('hours and coins withheld until battle ends', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     c.debugCompleteFocus();
     await pumpEventQueue();
     expect(c.pendingCoins, 30);
@@ -54,7 +67,11 @@ void main() {
   });
 
   test('defeat forfeits everything', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     c.debugCompleteFocus();
     c.finishRestBreak(); // penalties only apply while focusing
     for (var i = 0; i < 4; i++) {
@@ -73,8 +90,12 @@ void main() {
     expect(c.lastResult, same(result));
   });
 
-  test('tax never below zero', () {
-    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+  test('tax never below zero', () async {
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     c.debugCompleteFocus();
     c.finishRestBreak();
     c.applyDistractionTax();
@@ -84,14 +105,19 @@ void main() {
     expect(c.pendingCoins, 0);
   });
 
-  test('penalty ignored when not in battle', () {
+  test('penalty ignored when not in battle', () async {
     c.applyBlacklistPenalty();
     expect(c.heroHp, 100);
     expect(c.lastResult, isNull);
   });
 
   test('pause once per session and freezes timer', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 5, totalSessions: 2, restDurationSeconds: 5);
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 5,
+      totalSessions: 2,
+      restDurationSeconds: 5,
+    );
     expect(c.pause(), isTrue);
     expect(c.isPaused, isTrue);
     await Future.delayed(const Duration(milliseconds: 1200));
@@ -107,8 +133,8 @@ void main() {
     expect(c.pause(), isFalse);
   });
 
-  test('long rest after N sessions', () {
-    c.startFocusSession(
+  test('long rest after N sessions', () async {
+    await c.startFocusSession(
       task: 'T',
       durationSeconds: 1500,
       totalSessions: 3,
@@ -125,13 +151,17 @@ void main() {
     expect(c.remainingSeconds, 7);
   });
 
-  test('house HP ratio follows remaining time', () {
-    c.startFocusSession(task: 'T', durationSeconds: 1500);
+  test('house HP ratio follows remaining time', () async {
+    await c.startFocusSession(task: 'T', durationSeconds: 1500);
     expect(c.houseHpRatio, 1.0);
   });
 
-  test('penalty and tax ignored during rest', () {
-    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+  test('penalty and tax ignored during rest', () async {
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     c.debugCompleteFocus();
     expect(c.isResting, isTrue);
     c.applyBlacklistPenalty();
@@ -140,16 +170,25 @@ void main() {
     expect(c.pendingCoins, 30);
   });
 
-  test('starting again while in battle keeps the escrow', () {
-    c.startFocusSession(task: 'T', durationSeconds: 1500, totalSessions: 2);
+  test('starting again while in battle keeps the escrow', () async {
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1500,
+      totalSessions: 2,
+    );
     c.debugCompleteFocus();
-    c.startFocusSession(task: 'Other', durationSeconds: 60);
+    await c.startFocusSession(task: 'Other', durationSeconds: 60);
     expect(c.pendingCoins, 30);
     expect(c.taskName, 'T');
   });
 
   test('rest lasts its full duration with real timers', () async {
-    c.startFocusSession(task: 'T', durationSeconds: 1, totalSessions: 2, restDurationSeconds: 5);
+    await c.startFocusSession(
+      task: 'T',
+      durationSeconds: 1,
+      totalSessions: 2,
+      restDurationSeconds: 5,
+    );
     await Future.delayed(const Duration(milliseconds: 3500));
     expect(c.isResting, isTrue);
     expect(c.remainingSeconds, greaterThan(1));
