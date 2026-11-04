@@ -6,23 +6,28 @@
 App icon: warrior_amethyst badge on the battle-sky teal (adaptive icon + legacy PNGs).
 Notification icon: white silhouette of warrior_starter (Android only uses the alpha shape).
 """
+from collections import deque
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 RES = ROOT / "android/app/src/main/res"
-APP_BADGE = ROOT / "ui/ranks/warrior/warrior_amethyst.png"
+APP_BADGE = ROOT / "ui/branding/focus_knight_logo.png"
+SPLASH_BADGE = ROOT / "ui/branding/focus_knight_logowtext.png"
 NOTIF_BADGE = ROOT / "ui/ranks/warrior/warrior_starter.png"
 
 DENSITIES = {"mdpi": 1, "hdpi": 1.5, "xhdpi": 2, "xxhdpi": 3, "xxxhdpi": 4}
-SKY_CENTER, SKY_EDGE = (0x5C, 0xC3, 0xC4), (0x2F, 0x8F, 0x91)
-BADGE_SHARE = 0.60  # of the 108dp adaptive canvas; the visible mask is the inner 72dp (0.67)
+SKY_CENTER, SKY_EDGE = (0x16, 0x20, 0x2D), (0x08, 0x0D, 0x14)
+BADGE_SHARE = 0.78
 
 
 def scaled(img: Image.Image, size: int) -> Image.Image:
-    # Pixel art: nearest when enlarging keeps crisp pixels; Lanczos when shrinking avoids jaggies.
-    return img.resize((size, size), Image.NEAREST if size >= img.width else Image.LANCZOS)
+    ratio = min(size / img.width, size / img.height)
+    width = max(1, round(img.width * ratio))
+    height = max(1, round(img.height * ratio))
+    resample = Image.NEAREST if ratio >= 1 else Image.LANCZOS
+    return img.resize((width, height), resample)
 
 
 def sky(size: int) -> Image.Image:
@@ -35,6 +40,28 @@ def sky(size: int) -> Image.Image:
             t = min(1.0, ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5 / r)
             px[x, y] = tuple(round(a + (b - a) * t) for a, b in zip(SKY_CENTER, SKY_EDGE))
     return img
+
+
+def transparent_white_background(img: Image.Image) -> Image.Image:
+    rgba = img.convert("RGBA")
+    pixels = rgba.load()
+    queue = deque()
+    seen = set()
+    for x in range(rgba.width):
+        queue.extend(((x, 0), (x, rgba.height - 1)))
+    for y in range(rgba.height):
+        queue.extend(((0, y), (rgba.width - 1, y)))
+    while queue:
+        x, y = queue.popleft()
+        if (x, y) in seen or not (0 <= x < rgba.width and 0 <= y < rgba.height):
+            continue
+        seen.add((x, y))
+        r, g, b, a = pixels[x, y]
+        if r < 235 or g < 235 or b < 235:
+            continue
+        pixels[x, y] = (r, g, b, 0)
+        queue.extend(((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)))
+    return rgba
 
 
 def badge_on(canvas: int, badge: Image.Image, share: float) -> Image.Image:
@@ -67,7 +94,8 @@ def silhouette(badge: Image.Image, size: int) -> Image.Image:
 
 
 def main() -> None:
-    app = Image.open(APP_BADGE).convert("RGBA")
+    app = transparent_white_background(Image.open(APP_BADGE))
+    splash_badge = transparent_white_background(Image.open(SPLASH_BADGE))
     notif = Image.open(NOTIF_BADGE).convert("RGBA")
 
     for name, k in DENSITIES.items():
@@ -91,6 +119,12 @@ def main() -> None:
         drawable = RES / f"drawable-{name}"
         drawable.mkdir(exist_ok=True)
         silhouette(notif, round(24 * k)).save(drawable / "ic_stat_focusknight.png")
+
+    splash = badge_on(720, splash_badge, 0.82)
+    splash.save(ROOT / "ui/branding/focus_knight_logowtext_transparent.png")
+    drawable_nodpi = RES / "drawable-nodpi"
+    drawable_nodpi.mkdir(exist_ok=True)
+    splash.save(drawable_nodpi / "launch_logo.png")
 
     anydpi = RES / "mipmap-anydpi-v26"
     anydpi.mkdir(exist_ok=True)

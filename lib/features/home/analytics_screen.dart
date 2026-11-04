@@ -2,9 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import '../../core/services/demo_data_seeder.dart';
 import '../../core/widgets/flat_theme.dart';
 import '../dashboard/services/analytics_calculations.dart';
-import '../dashboard/services/demo_analytics.dart';
 import '../dashboard/services/analytics_journal.dart';
 import '../dashboard/services/analytics_service.dart';
 import '../dashboard/services/focus_history_service.dart';
@@ -28,29 +28,32 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
     history: widget.history,
     clock: widget.clock,
   );
-  DemoAnalytics? _demo;
-  bool _showDemo = false;
-  List<Widget>? _demoPanels;
-  late final realPanels = _buildPanels(analytics);
-  AnalyticsService get current => _showDemo ? _demo!.analytics : analytics;
-  void _toggleDemo(bool value) {
-    if (value && _demo == null) {
-      _demo = DemoAnalytics.create(now: widget.clock?.call());
-      _demoPanels = _buildPanels(_demo!.analytics);
-    }
-    setState(() => _showDemo = value);
-  }
+  late final panels = _buildPanels(analytics);
+  final _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     analytics.refreshAnalytics();
+    if (DemoDataSeeder.enabled) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _autoScroll());
+    }
+  }
+
+  Future<void> _autoScroll() async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    if (!mounted || !_scrollController.hasClients) return;
+    await _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(seconds: 18),
+      curve: Curves.linear,
+    );
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_showDemo) {
+    if (state == AppLifecycleState.resumed) {
       analytics.refreshAnalytics();
     }
   }
@@ -58,8 +61,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
     analytics.dispose();
-    _demo?.analytics.dispose();
     super.dispose();
   }
 
@@ -182,66 +185,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen>
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: Flat.bg,
-    appBar: AppBar(
-      title: const Text('Phân tích'),
-      backgroundColor: Flat.bg,
-      actions: [
-        if (_showDemo)
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Flat.longRest.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(5),
-                ),
-                child: const Text(
-                  'DEMO',
-                  style: TextStyle(
-                    color: Flat.longRest,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    ),
+    appBar: AppBar(title: const Text('Phân tích'), backgroundColor: Flat.bg),
     body: RefreshIndicator(
-      onRefresh: current.refreshAnalytics,
+      onRefresh: analytics.refreshAnalytics,
       child: ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Xem dữ liệu mẫu',
-                      style: TextStyle(fontSize: 14, color: Flat.text),
-                    ),
-                    if (_showDemo)
-                      const Text(
-                        'Dữ liệu mô phỏng · 30 ngày',
-                        style: TextStyle(fontSize: 12, color: Flat.longRest),
-                      ),
-                  ],
-                ),
-              ),
-              Switch.adaptive(
-                key: const ValueKey('analytics-demo-toggle'),
-                value: _showDemo,
-                onChanged: _toggleDemo,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ...(_showDemo ? _demoPanels! : realPanels),
-        ],
+        children: panels,
       ),
     ),
   );
