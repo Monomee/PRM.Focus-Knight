@@ -59,6 +59,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - ui/branding/
     - ui/buildings/enemy_building/
     - ui/buildings/player_building/
     - ui/characters/

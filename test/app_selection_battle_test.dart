@@ -65,6 +65,7 @@ void main() {
         AppLifecycleState.resumed,
       ]);
       await tester.pumpWidget(const FocusKnightApp());
+      await tester.pump(const Duration(milliseconds: 1400));
       await flush();
       final shell = tester.widget<AppShell>(find.byType(AppShell));
       final starting = shell.controller.startFocusSession(

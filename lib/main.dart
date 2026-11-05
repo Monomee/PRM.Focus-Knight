@@ -15,18 +15,19 @@ import 'core/game/village.dart';
 import 'core/game/economy.dart';
 import 'core/services/alert_notifier.dart';
 import 'core/services/distraction_guard.dart';
+import 'core/services/demo_data_seeder.dart';
 import 'features/overlay/blocker_overlay_widget.dart';
 import 'features/telemetry/screen_time_tracker.dart';
 
 /// Entry point for the main Flutter application
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setPreferredOrientations([
+  await DemoDataSeeder.reset();
+  await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Initialize background foreground task service
   ForegroundTaskService.init();
 
   runApp(const FocusKnightApp());
@@ -170,6 +171,7 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
   }
 
   Future<void> _initProgress() async {
+    final splashStartedAt = DateTime.now();
     if (mounted) setState(() => _progressFailed = false);
     try {
       await _player.load();
@@ -179,6 +181,10 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
       await Settlement.resume(_player, history);
       await _player.abandonUnfinishedConstructions();
       await _refreshStreakShield();
+      final remaining =
+          const Duration(milliseconds: 1400) -
+          DateTime.now().difference(splashStartedAt);
+      if (remaining > Duration.zero) await Future<void>.delayed(remaining);
       _progressReady = true;
     } catch (_) {
       _progressFailed = true;
@@ -303,7 +309,17 @@ class _FocusKnightHomePageState extends State<FocusKnightHomePage>
                     ),
                   ],
                 )
-              : const CircularProgressIndicator(),
+              : Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'ui/branding/focus_knight_logowtext_transparent.png',
+                      width: 260,
+                    ),
+                    const SizedBox(height: 24),
+                    const CircularProgressIndicator(),
+                  ],
+                ),
         ),
       );
     }

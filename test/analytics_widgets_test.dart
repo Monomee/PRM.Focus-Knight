@@ -81,11 +81,14 @@ void main() {
       DistractionVelocityCard,
       CorrelationChartCard,
     ]) {
-      await tester.scrollUntilVisible(
-        find.byType(type),
-        400,
-        scrollable: find.byType(Scrollable).first,
-      );
+      for (
+        var attempt = 0;
+        attempt < 10 && find.byType(type).evaluate().isEmpty;
+        attempt++
+      ) {
+        await tester.drag(find.byType(ListView), const Offset(0, -400));
+        await tester.pumpAndSettle();
+      }
       expect(find.byType(type), findsOneWidget);
       expect(tester.takeException(), isNull);
     }

@@ -13,7 +13,7 @@ class DemoAnalytics {
   final List<SessionSample> sessions;
   final List<FocusInterval> appUsageIntervals;
 
-  static DemoAnalytics create({DateTime? now}) {
+  static DemoAnalytics create({DateTime? now, bool dense = false}) {
     final reference = (now ?? DateTime.now()).toLocal();
     final first = nextDay(reference, -29);
     final sessions = <SessionSample>[], usage = <FocusInterval>[];
@@ -27,18 +27,28 @@ class DemoAnalytics {
           ? 0
           : isToday
           ? (reference.isAfter(DateTime(date.year, date.month, date.day, 9))
-                ? 1
+                ? dense
+                      ? 2
+                      : 1
                 : 0)
           : strong
-          ? 4
+          ? dense
+                ? 6
+                : 4
           : weak
-          ? 2
+          ? dense
+                ? 3
+                : 2
           : d % 6 == 0
+          ? dense
+                ? 6
+                : 5
+          : dense
           ? 5
           : 4;
       var minutes = 0;
       for (var n = 0; n < count; n++) {
-        final hours = [8, 14, 15, 18, 10];
+        final hours = [8, 14, 15, 18, 10, 20];
         final afternoon = n == 1 || n == 2;
         final hour = weak && n == 1 ? 18 : hours[n];
         var start = DateTime(
@@ -52,7 +62,8 @@ class DemoAnalytics {
         if (d == 9 && n == count - 1) {
           start = DateTime(date.year, date.month, date.day, 23, 45);
         }
-        final target = [25, 40, 50, 30, 25][n] * 60;
+        final target =
+            (dense ? [30, 45, 60, 40, 30, 50] : [25, 40, 50, 30, 25])[n] * 60;
         var complete =
             isToday ||
             strong ||
